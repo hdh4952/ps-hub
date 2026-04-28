@@ -17,6 +17,6 @@ describe("loadEnv", () => {
   it("throws when DATABASE_URL missing", async () => {
     delete process.env.DATABASE_URL;
     const { loadEnv } = await import("@/env");
-    expect(() => loadEnv()).toThrow(/DATABASE_URL/);
+    expect(() => loadEnv()).toThrow(/Invalid environment.*DATABASE_URL/);
   });
 });
