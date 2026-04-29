@@ -1,14 +1,14 @@
 import type { Platform, PlatformAdapter } from "./types";
 import { codeforcesAdapter } from "./codeforces";
+import { atcoderAdapter } from "./atcoder";
 
-// atcoder added in Task 3.3
-const registry: Partial<Record<Platform, PlatformAdapter>> = {
+const registry: Record<Platform, PlatformAdapter> = {
   codeforces: codeforcesAdapter,
+  atcoder: atcoderAdapter,
 };
 
 export function getAdapter(platform: Platform): PlatformAdapter {
-  const adapter = registry[platform];
-  if (!adapter) throw new Error(`adapter not implemented: ${platform}`);
-  return adapter;
+  return registry[platform];
 }
+
 export type { PlatformAdapter, NormalizedProfile, NotFound, Platform } from "./types";
