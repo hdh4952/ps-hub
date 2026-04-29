@@ -1,7 +1,7 @@
 # ps-hub — Progress Handoff
 
 > Read this file in a fresh session to pick up exactly where work stopped.
-> Last updated: 2026-04-29 (Phase 2 complete; Phase 3 next).
+> Last updated: 2026-04-29 (Phase 3 complete; Phase 4 next).
 
 ## What this project is
 
@@ -88,12 +88,24 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 
 **Notable deviation in 2.3:** added one-line stubs at `src/app/(app)/groups/page.tsx` and `src/app/(app)/add/page.tsx` to satisfy `experimental.typedRoutes: true` (the spec'd nav uses `<Link href="/groups">` / `<Link href="/add">`). Both stubs will be replaced by Tasks 6.4 and 6.5.
 
-### Phase 3 — Adapters ⚙️ NEXT
-- 3.1 Adapter types + getAdapter
-- 3.2 Codeforces adapter (TDD with mocked fetch)
-- 3.3 AtCoder adapter (TDD)
+### Phase 3 — Adapters ✅ COMPLETE (2 commits)
 
-### Phase 4 — Cache ⏳ NOT STARTED
+| Task | Commit | Status |
+|---|---|---|
+| 3.1 Adapter types + getAdapter | `0731e43` (folded in) | ✅ |
+| 3.2 Codeforces adapter (TDD, 4 tests, real fixtures) | `0731e43` | ✅ |
+| 3.3 AtCoder adapter (TDD, 4 tests, real fixture) + `index.ts` finalized | `1530fce` | ✅ |
+
+`npm run typecheck` clean, `npm test` 11/11 pass after each commit (3 prior + 4 codeforces + 4 atcoder).
+
+**Notable deviation in 3.1:** plan-verbatim `index.ts` registers both adapters, but `atcoder.ts` doesn't exist until 3.3 — would have left the tree with broken imports. Workaround: 3.1+3.2's `index.ts` shipped as `Partial<Record<Platform, PlatformAdapter>>` registering only codeforces, with `getAdapter` throwing `adapter not implemented: <platform>` for atcoder. 3.3 then dropped the `Partial<>`/throw and adopted the plan-final `Record<...>` shape. Each commit's typecheck stays clean.
+
+**Fixtures captured live** (no need to re-run): tourist's CF userinfo + 302-entry rating history, AtCoder's 140-entry contest history. All under `src/lib/adapters/__fixtures__/`.
+
+**Forward-looking nit flagged in 3.1+3.2 review** (deferred to UI phase — see Pending below):
+- `src/lib/adapters/codeforces.ts` `rankLabel` returns raw CF casing (e.g. `"legendary grandmaster"`) but the fallback string is title-case `"Newbie"`. Inconsistent. Either lowercase the fallback or title-case in the UI render layer (Phase 6 — `HandleCard`).
+
+### Phase 4 — Cache ⚙️ NEXT
 - 4.1 `profile-cache.ts` (TTL 10min, SWR, force, integration tests vs real Postgres)
 
 ### Phase 5 — API Routes ⏳ NOT STARTED
@@ -129,7 +141,9 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    - Drop the redundant defensive cast at `src/lib/api/session.ts:5`. Module augmentation in `src/types/next-auth.d.ts` already types `session.user.id`. Simplify to `if (!session?.user?.id) return null;` and `userId: session.user.id`.
    - Land all of the above as one commit at the start of Phase 5, before Task 5.1 implementation.
 
-3. **`.env.local`** has placeholder credentials. To actually run `npm run dev` you need real `GOOGLE_CLIENT_ID`/`SECRET` (Google Cloud Console → OAuth credentials), `NEXTAUTH_SECRET` (`openssl rand -base64 32`), and a working Postgres on `DATABASE_URL`.
+3. **`rankLabel` casing consistency** (Phase 3 review nit) — Codeforces adapter returns raw CF casing for `rankLabel` (lowercase, e.g. `"legendary grandmaster"`) but the fallback string is title-case (`"Newbie"`). Decide on one casing convention when implementing `HandleCard` in Task 6.1; either normalize in the adapter or title-case at render time. Single-line change either way.
+
+4. **`.env.local`** has placeholder credentials. To actually run `npm run dev` you need real `GOOGLE_CLIENT_ID`/`SECRET` (Google Cloud Console → OAuth credentials), `NEXTAUTH_SECRET` (`openssl rand -base64 32`), and a working Postgres on `DATABASE_URL`.
 
 ## Resuming in a fresh session — exact recipe
 
@@ -142,9 +156,9 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 2. **Verify state:**
    ```bash
    git status                  # should be clean (only `.omc/`, `docs/`, modified `next-env.d.ts` are untracked/uncommitted noise)
-   git log --oneline -10       # confirm last commit is 570ce03 (`feat(api): session + error helpers`)
+   git log --oneline -10       # confirm last commit is 1530fce (`feat(adapters): AtCoder adapter + tier table + tests`)
    npm run typecheck           # PASS
-   npm test                    # 3 tests PASS
+   npm test                    # 11 tests PASS (3 sanity/env + 4 codeforces + 4 atcoder)
    git remote -v               # origin = https://github.com/hdh4952/ps-hub.git
    ```
 
@@ -152,7 +166,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    ```
    /superpowers:subagent-driven-development
    ```
-   then continue from Task 3.1 (Phase 3 — Adapters: types + getAdapter, then Codeforces TDD, then AtCoder TDD).
+   then continue from Task 4.1 (Phase 4 — Cache: `profile-cache.ts` with TTL/SWR/force, plus integration tests against real Postgres). Phase 4 introduces the first DB-dependent integration tests — `DATABASE_URL` will need to point at a live Postgres for `npm test` to fully pass; if blocked, document and continue with unit-coverable portions.
 
 4. **Pattern to repeat for every remaining task:** see "Workflow protocol" above. Do not skip the spec review or push step.
 
