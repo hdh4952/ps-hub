@@ -2,7 +2,6 @@ import { auth } from "@/lib/auth";
 
 export async function requireSession() {
   const session = await auth();
-  const userId = (session?.user as { id?: string } | undefined)?.id;
-  if (!session?.user || !userId) return null;
-  return { userId, user: session.user };
+  if (!session?.user?.id) return null;
+  return { userId: session.user.id, user: session.user };
 }
