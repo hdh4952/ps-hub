@@ -1,7 +1,7 @@
 # ps-hub — Progress Handoff
 
 > Read this file in a fresh session to pick up exactly where work stopped.
-> Last updated: 2026-04-29 (Phase 3 complete + Postgres provisioned on Neon; Phase 4 next).
+> Last updated: 2026-04-29 (Phase 4 complete; Phase 5 next).
 
 ## What this project is
 
@@ -23,7 +23,12 @@ If anything in this `progress.md` conflicts with those, **the spec/plan win**.
 
 - **Repo:** `C:\Users\User\Desktop\github\ps-hub`
 - **Remote:** `origin = https://github.com/hdh4952/ps-hub.git`. `main` tracks `origin/main`.
-- **Postgres:** **Neon** (`ap-southeast-1`, project `neondb`). `DATABASE_URL` lives in `.env.local` (gitignored, real Neon pooler URL with `?sslmode=require`). Migration `0000_melted_mesmero.sql` applied 2026-04-29 — all 8 tables present (`accounts`, `sessions`, `users`, `verificationToken`, `groups`, `favorites`, `favorite_groups`, `cached_profiles`). No native `psql`; verify state via `node -e "require('postgres')(...)..."` one-liners. Drizzle config (`drizzle.config.ts`) loads `.env.local` first, falls back to `.env`. OAuth secrets (`GOOGLE_CLIENT_ID/SECRET`, `NEXTAUTH_SECRET`) are still `xxx` — required before `npm run dev` works in a browser.
+- **Postgres:** **Neon** (`ap-southeast-1`). Two databases:
+  - `neondb` — main app DB. `DATABASE_URL` in `.env.local`. 8 tables migrated.
+  - `pshub_test` — integration test DB. `TEST_DATABASE_URL` in `.env.local`. `tests/helpers/db.ts:createTestDb` runs `migrate()` idempotently on first use.
+  - Migration: `0000_melted_mesmero.sql` (post-fix-up). All 8 tables: `accounts`, `sessions`, `users`, `verificationToken`, `groups`, `favorites`, `favorite_groups`, `cached_profiles`.
+  - No native `psql`. Verify state via `node -e "require('postgres')(...)..."` one-liners. Drizzle config (`drizzle.config.ts`) loads `.env.local` first, falls back to `.env`. Vitest setup (`tests/setup.ts`) does the same and asserts `TEST_DATABASE_URL` is set.
+  - OAuth secrets (`GOOGLE_CLIENT_ID/SECRET`, `NEXTAUTH_SECRET`) still `xxx` placeholders — required before `npm run dev` works in a browser.
 - **OS:** Windows 11. Shell: bash (Unix-style paths inside bash; native paths from PowerShell).
 
 ## Workflow protocol — IMPORTANT, DO NOT DEVIATE
@@ -104,10 +109,24 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 **Forward-looking nit flagged in 3.1+3.2 review** (deferred to UI phase — see Pending below):
 - `src/lib/adapters/codeforces.ts` `rankLabel` returns raw CF casing (e.g. `"legendary grandmaster"`) but the fallback string is title-case `"Newbie"`. Inconsistent. Either lowercase the fallback or title-case in the UI render layer (Phase 6 — `HandleCard`).
 
-### Phase 4 — Cache ⚙️ NEXT
-- 4.1 `profile-cache.ts` (TTL 10min, SWR, force, integration tests vs real Postgres)
+### Phase 4 — Cache ✅ COMPLETE (1 task, 2 commits)
 
-### Phase 5 — API Routes ⏳ NOT STARTED
+| Task | Commit | Status |
+|---|---|---|
+| 4.1 `profile-cache.ts` (TTL 10min, SWR, force, 6-test integration suite vs Neon `pshub_test`) | `2dba150` | ✅ |
+| 4.1 review fix-ups (mock placement → `beforeAll`, `ERROR_TTL_MS = 30s`, `verificationToken` truncate, `_resetNowForTest`, drop `as unknown as object` cast, +1 test) | `a2b5f60` | ✅ |
+
+`npm test` 18/18 pass (11 unit + 7 profile-cache integration). `npx tsc --noEmit` clean. Integration runtime ~5s on Neon (`ap-southeast-1`).
+
+**Notable deviations from plan-verbatim** (all driven by the Neon/Next.js delta — none compromise spec intent):
+1. `vitest.config.ts` uses `setupFiles: ["./tests/setup.ts"]` instead of `["dotenv/config"]`. The custom setup file loads `.env.local` first (Next.js convention) and asserts `TEST_DATABASE_URL` is present.
+2. Test DB on Neon: `pshub_test` database created via `CREATE DATABASE` issued from postgres-js (no Docker available). `TEST_DATABASE_URL` shares the same Neon endpoint as `DATABASE_URL`, only the path differs (`/neondb` vs `/pshub_test`).
+3. Test assertions use camelCase property names (`r.fetchStatus`, `r.currentRating`) — plan had snake_case which would have been a runtime bug since Drizzle's `.returning()` keys by TS field name, not column name.
+4. Added `afterAll(() => testDb.sql.end())` (plan omitted; prevents hung connections).
+5. **Fix-up commit additions**: `ERROR_TTL_MS = 30s` distinct from happy-path `TTL_MS = 10min` — error rows expire fast so transient upstream failures don't block a handle for 10 minutes. Covered by a new 7th test.
+
+### Phase 5 — API Routes ⚙️ NEXT
+- (Pending bundle below — middleware + `withAuth` + `json403`/`json429` + `ErrorCode` literal union — lands as 1 commit at start of Phase 5.)
 - 5.1 GET /api/profiles + force rate-limit
 - 5.2 /api/groups CRUD
 - 5.3 /api/favorites CRUD
@@ -152,20 +171,22 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 2. **Verify state:**
    ```bash
    git status                  # should be clean (only `.omc/`, `docs/`, modified `next-env.d.ts` are untracked/uncommitted noise)
-   git log --oneline -10       # confirm latest is `docs: progress.md — Postgres on Neon, schema applied`
+   git log --oneline -10       # confirm latest is `chore: address Phase 4.1 review …` (`a2b5f60`)
    npm run typecheck           # PASS
-   npm test                    # 11 tests PASS (3 sanity/env + 4 codeforces + 4 atcoder)
+   npm test                    # 18 tests PASS (11 unit + 7 profile-cache integration)
    git remote -v               # origin = https://github.com/hdh4952/ps-hub.git
-   # Postgres reachable (Neon — listed in `.env.local`, gitignored):
-   node -e "require('dotenv').config({path:'.env.local'});const s=require('postgres')(process.env.DATABASE_URL,{max:1});s\`SELECT count(*) FROM information_schema.tables WHERE table_schema='public'\`.then(r=>{console.log('tables:',r[0].count);return s.end();}).catch(e=>{console.error(e.message);process.exit(1);})"
-   # → tables: 8
+   # Both Postgres DBs reachable on Neon (URLs listed in `.env.local`, gitignored):
+   node -e "require('dotenv').config({path:'.env.local'});const s=require('postgres')(process.env.DATABASE_URL,{max:1});s\`SELECT count(*) FROM information_schema.tables WHERE table_schema='public'\`.then(r=>{console.log('main tables:',r[0].count);return s.end();}).catch(e=>{console.error(e.message);process.exit(1);})"
+   # → main tables: 8
+   node -e "require('dotenv').config({path:'.env.local'});const s=require('postgres')(process.env.TEST_DATABASE_URL,{max:1});s\`SELECT count(*) FROM information_schema.tables WHERE table_schema='public'\`.then(r=>{console.log('test tables:',r[0].count);return s.end();}).catch(e=>{console.error(e.message);process.exit(1);})"
+   # → test tables: 9 (8 schema + drizzle's _drizzle_migrations ledger)
    ```
 
 3. **Re-invoke the workflow skill:**
    ```
    /superpowers:subagent-driven-development
    ```
-   then continue from Task 4.1 (Phase 4 — Cache: `profile-cache.ts` with TTL/SWR/force, plus integration tests against real Postgres). Phase 4 introduces the first DB-dependent integration tests — `DATABASE_URL` will need to point at a live Postgres for `npm test` to fully pass; if blocked, document and continue with unit-coverable portions.
+   then continue from the **Phase 5 entry bundle** (Pending #1 below — one commit, ~30 LOC: middleware, `withAuth`, `json403`/`json429`, `ErrorCode` literal union, `session.ts` cast cleanup), then Task 5.1 (`GET /api/profiles/[platform]/[handle]` with force + rate-limit).
 
 4. **Pattern to repeat for every remaining task:** see "Workflow protocol" above. Do not skip the spec review or push step.
 
