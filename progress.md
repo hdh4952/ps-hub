@@ -3,6 +3,14 @@
 > Read this file in a fresh session to pick up exactly where work stopped.
 > Last updated: 2026-04-29 (Phase 4 complete; Phase 5 next).
 
+## TL;DR for the next session
+
+- ✅ **Phases 0–4 complete.** Bootstrap, DB schema, NextAuth, Codeforces+AtCoder adapters, profile-cache (TTL+SWR+force).
+- ✅ **Postgres provisioned** on Neon (`ap-southeast-1`). Two databases (`neondb` for app, `pshub_test` for integration tests). Both reachable; URLs in `.env.local`.
+- ✅ **`npm test` → 18/18 pass** (11 unit + 7 profile-cache integration). `npx tsc --noEmit` clean. Push-after-each-task discipline maintained throughout.
+- ⚙️ **Next**: Phase 5 entry bundle (Pending #1 below — middleware, `withAuth`, `json403/429`, `ErrorCode` literal union, `session.ts` cleanup — 1 commit, ~30 LOC), then Task 5.1 (`GET /api/profiles/[platform]/[handle]` + force rate-limit).
+- 🟡 **Open notes**: `rankLabel` casing nit deferred to Phase 6.1; OAuth/`NEXTAUTH_SECRET` still placeholders (only blocks `npm run dev` in browser, not tests); Neon DB password should be rotated since it was shared in chat during setup.
+
 ## What this project is
 
 **ps-hub**: a multi-user web app where each user signs in with Google, registers their AtCoder/Codeforces handles, bookmarks other people's handles, organizes them into groups, and views a unified rating dashboard.
@@ -171,7 +179,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 2. **Verify state:**
    ```bash
    git status                  # should be clean (only `.omc/`, `docs/`, modified `next-env.d.ts` are untracked/uncommitted noise)
-   git log --oneline -10       # confirm latest is `chore: address Phase 4.1 review …` (`a2b5f60`)
+   git log --oneline -10       # head should be the most recent `docs: progress.md — …` commit; cross-check the SHA against the Phase status table above
    npm run typecheck           # PASS
    npm test                    # 18 tests PASS (11 unit + 7 profile-cache integration)
    git remote -v               # origin = https://github.com/hdh4952/ps-hub.git
