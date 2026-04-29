@@ -6,6 +6,8 @@ import { groups } from "@/lib/db/schema/domain";
 import { withAuth } from "@/lib/api/with-auth";
 import { json400, json404, json409, json500 } from "@/lib/api/errors";
 
+const ParamsSchema = z.object({ id: z.string().uuid() });
+
 const PatchBody = z.object({
   name: z.string().min(1).max(64).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
@@ -15,7 +17,11 @@ const PatchBody = z.object({
 type Ctx = { params: Promise<{ id: string }> };
 
 export const PATCH = withAuth<Ctx>(async (req, ctx, { userId }) => {
-  const { id } = await ctx.params;
+  const rawParams = await ctx.params;
+  const paramsParsed = ParamsSchema.safeParse(rawParams);
+  if (!paramsParsed.success) return json400({ error: "invalid_params" });
+  const { id } = paramsParsed.data;
+
   const json = await req.json().catch(() => null);
   const parsed = PatchBody.safeParse(json);
   if (!parsed.success) return json400({ error: "invalid_body", details: parsed.error.flatten() });
@@ -35,12 +41,21 @@ export const PATCH = withAuth<Ctx>(async (req, ctx, { userId }) => {
 });
 
 export const DELETE = withAuth<Ctx>(async (_req, ctx, { userId }) => {
-  const { id } = await ctx.params;
-  const result = await db.delete(groups)
-    .where(and(eq(groups.id, id), eq(groups.userId, userId)))
-    .returning();
-  if (result.length === 0) return json404();
-  return new NextResponse(null, { status: 204 });
+  const rawParams = await ctx.params;
+  const paramsParsed = ParamsSchema.safeParse(rawParams);
+  if (!paramsParsed.success) return json400({ error: "invalid_params" });
+  const { id } = paramsParsed.data;
+
+  try {
+    const result = await db.delete(groups)
+      .where(and(eq(groups.id, id), eq(groups.userId, userId)))
+      .returning();
+    if (result.length === 0) return json404();
+    return new NextResponse(null, { status: 204 });
+  } catch (err) {
+    console.error("[DELETE /api/groups/[id]]", err);
+    return json500();
+  }
 });
 
 function isUniqueViolation(err: unknown): boolean {

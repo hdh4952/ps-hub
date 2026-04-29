@@ -44,6 +44,26 @@ describe("/api/groups", () => {
     expect(r.status).toBe(409);
   });
 
+  it("PATCH on non-UUID id returns 400 invalid_params (not 500)", async () => {
+    const { PATCH } = await import("@/app/api/groups/[id]/route");
+    const res = await PATCH(
+      new Request("http://x", { method: "PATCH", body: JSON.stringify({ name: "x" }) }),
+      { params: Promise.resolve({ id: "not-a-uuid" }) },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("invalid_params");
+  });
+
+  it("DELETE on non-UUID id returns 400 invalid_params (not 500)", async () => {
+    const { DELETE } = await import("@/app/api/groups/[id]/route");
+    const res = await DELETE(
+      new Request("http://x", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "not-a-uuid" }) },
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("PATCH renames; DELETE removes", async () => {
     const { POST } = await import("@/app/api/groups/route");
     const create = await POST(
