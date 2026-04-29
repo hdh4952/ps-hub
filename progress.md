@@ -1,7 +1,7 @@
 # ps-hub — Progress Handoff
 
 > Read this file in a fresh session to pick up exactly where work stopped.
-> Last updated: 2026-04-29 (Phase 2 in progress).
+> Last updated: 2026-04-29 (Phase 2 complete; Phase 3 next).
 
 ## What this project is
 
@@ -74,18 +74,21 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 - Drop redundant `favorites_user_idx` (covered by leftmost prefix of `favorites_user_platform_handle_uniq`).
 - Add comment to `src/lib/db/client.ts:6` documenting `loadEnv()` fail-fast intent at module import.
 
-### Phase 2 — Auth ⚙️ IN PROGRESS
+### Phase 2 — Auth ✅ COMPLETE (4 tasks, 5 commits)
 
 | Task | Commit | Status |
 |---|---|---|
-| 2.1 NextAuth + Drizzle adapter | `c2975c3` | implementer ✅, spec review ✅, **code quality review NOT YET DISPATCHED** |
-| 2.2 /login page + (auth) layout | — | pending |
-| 2.3 (app) layout (session-guarded nav) | — | pending |
-| 2.4 requireSession + API errors helpers | — | pending |
+| 2.1 NextAuth + Drizzle adapter | `c2975c3` | ✅ |
+| 2.1 review fix-ups (wire `NEXTAUTH_SECRET`, drop `as any` via module augmentation in `src/types/next-auth.d.ts`) | `b672945` | ✅ |
+| 2.2 /login page + (auth) layout | `0e94393` | ✅ |
+| 2.3 (app) layout session-guarded + nav | `e0a059a` | ✅ |
+| 2.4 requireSession + json4xx/5xx helpers | `570ce03` | ✅ |
 
-**Right where work stopped:** Task 2.1 spec compliance review just returned ✅. Next concrete step is to **dispatch the code-quality reviewer for Task 2.1**, then proceed to Task 2.2.
+`npm run typecheck` and `npm test` (3 tests) pass after each commit. Manual browser sign-in verification (Tasks 2.2 / 2.3) deferred — no live Google OAuth creds in this sandbox; covered by Phase 7 Playwright e2e.
 
-### Phase 3 — Adapters ⏳ NOT STARTED
+**Notable deviation in 2.3:** added one-line stubs at `src/app/(app)/groups/page.tsx` and `src/app/(app)/add/page.tsx` to satisfy `experimental.typedRoutes: true` (the spec'd nav uses `<Link href="/groups">` / `<Link href="/add">`). Both stubs will be replaced by Tasks 6.4 and 6.5.
+
+### Phase 3 — Adapters ⚙️ NEXT
 - 3.1 Adapter types + getAdapter
 - 3.2 Codeforces adapter (TDD with mocked fetch)
 - 3.3 AtCoder adapter (TDD)
@@ -118,7 +121,11 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    - Add a one-line comment in `src/lib/db/client.ts:6` documenting that `loadEnv()` is intentionally fail-fast at module load.
    - Pick this up before any production data is loaded; a single small commit is enough.
 
-2. **`.env.local`** has placeholder credentials. To actually run `npm run dev` you need real `GOOGLE_CLIENT_ID`/`SECRET` (Google Cloud Console → OAuth credentials), `NEXTAUTH_SECRET` (`openssl rand -base64 32`), and a working Postgres on `DATABASE_URL`.
+2. **Forward-looking cleanup** (Task 2.4 review):
+   - Drop the redundant defensive cast at `src/lib/api/session.ts:5`. Module augmentation in `src/types/next-auth.d.ts` already types `session.user.id`. Simplify to `if (!session?.user?.id) return null;` and `userId: session.user.id`.
+   - Add a `json403` helper to `src/lib/api/errors.ts` (e.g. `export const json403 = (b: Body = { error: "forbidden" }) => NextResponse.json(b, { status: 403 });`) before the first owner-checked route handler in Phase 5.
+
+3. **`.env.local`** has placeholder credentials. To actually run `npm run dev` you need real `GOOGLE_CLIENT_ID`/`SECRET` (Google Cloud Console → OAuth credentials), `NEXTAUTH_SECRET` (`openssl rand -base64 32`), and a working Postgres on `DATABASE_URL`.
 
 ## Resuming in a fresh session — exact recipe
 
@@ -131,7 +138,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 2. **Verify state:**
    ```bash
    git status                  # should be clean (only `.omc/`, `docs/`, modified `next-env.d.ts` are untracked/uncommitted noise)
-   git log --oneline -10       # confirm last commit is c2975c3
+   git log --oneline -10       # confirm last commit is 570ce03 (`feat(api): session + error helpers`)
    npm run typecheck           # PASS
    npm test                    # 3 tests PASS
    git remote -v               # origin = https://github.com/hdh4952/ps-hub.git
@@ -141,7 +148,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    ```
    /superpowers:subagent-driven-development
    ```
-   then continue from Task 2.1 code-quality review (or skip to Task 2.2 if reviewing in fresh session feels redundant — note in the task list either way).
+   then continue from Task 3.1 (Phase 3 — Adapters: types + getAdapter, then Codeforces TDD, then AtCoder TDD).
 
 4. **Pattern to repeat for every remaining task:** see "Workflow protocol" above. Do not skip the spec review or push step.
 
