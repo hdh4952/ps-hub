@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterEach, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
 import { createTestDb, truncateAll } from "../../helpers/db";
 
 const adapterMock = { fetch: vi.fn() };
@@ -12,7 +12,7 @@ beforeAll(async () => {
   testDb = await createTestDb();
   vi.doMock("@/lib/db/client", () => ({ db: testDb.db, sql: testDb.sql }));
 });
-afterEach(async () => {
+beforeEach(async () => {
   await truncateAll(testDb.sql);
   adapterMock.fetch.mockReset();
   const { _resetNowForTest } = await import("@/lib/cache/profile-cache");

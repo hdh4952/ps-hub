@@ -4,8 +4,9 @@ import { eq, desc } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { favorites } from "@/lib/db/schema/domain";
 import { withAuth } from "@/lib/api/with-auth";
-import { json400, json409, json422, json500 } from "@/lib/api/errors";
+import { json400, json409, json422, json429, json500 } from "@/lib/api/errors";
 import { getProfile } from "@/lib/cache/profile-cache";
+import { allowFavoriteAdd } from "@/lib/rate-limit/favorite-add";
 
 const HandleRe = /^[A-Za-z0-9_\-.]{1,32}$/;
 const PostBody = z.object({
@@ -25,6 +26,8 @@ export const POST = withAuth(async (req, _ctx, { userId }) => {
   const parsed = PostBody.safeParse(json);
   if (!parsed.success) return json400({ error: "invalid_body", details: parsed.error.flatten() });
   const { platform, handle } = parsed.data;
+
+  if (!allowFavoriteAdd(userId)) return json429();
 
   let profile;
   try {
