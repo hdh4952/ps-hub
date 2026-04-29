@@ -1,5 +1,5 @@
 {
-  "id": "8374818d-e9f0-4f9f-8178-a09516f4348e",
+  "id": "bf10b037-96f1-4222-9039-e6cf5edde319",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -473,21 +473,6 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "favorites_user_idx": {
-          "name": "favorites_user_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

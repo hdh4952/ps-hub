@@ -115,5 +115,4 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "favorites_user_platform_handle_uniq" ON "favorites" USING btree ("user_id","platform","handle_lc");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "favorites_user_idx" ON "favorites" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "groups_user_name_uniq" ON "groups" USING btree ("user_id","name");

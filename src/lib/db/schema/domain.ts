@@ -1,5 +1,5 @@
 import {
-  pgTable, text, timestamp, integer, uuid, jsonb, primaryKey, index, uniqueIndex, check
+  pgTable, text, timestamp, integer, uuid, jsonb, primaryKey, uniqueIndex, check
 } from "drizzle-orm/pg-core";
 import { sql as raw } from "drizzle-orm";
 import { users } from "./auth";
@@ -31,7 +31,6 @@ export const favorites = pgTable(
   },
   (t) => ({
     uniq: uniqueIndex("favorites_user_platform_handle_uniq").on(t.userId, t.platform, t.handleLc),
-    byUser: index("favorites_user_idx").on(t.userId),
     platformCheck: check("platform_chk", raw`${t.platform} IN ('atcoder','codeforces')`),
   }),
 );
