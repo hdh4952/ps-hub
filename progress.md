@@ -121,9 +121,13 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    - Add a one-line comment in `src/lib/db/client.ts:6` documenting that `loadEnv()` is intentionally fail-fast at module load.
    - Pick this up before any production data is loaded; a single small commit is enough.
 
-2. **Forward-looking cleanup** (Task 2.4 review):
+2. **Phase 5 entry bundle** (one commit, ~30 LOC, surfaced by Phase 2 holistic review):
+   - `middleware.ts` matching `/api/:path*` (excluding `/api/auth/*`) that runs `auth()` and rejects unauthenticated requests at the edge — belt to `requireSession()`'s suspenders, prevents accidental missing `requireSession` call in a future route handler.
+   - `withAuth(handler)` wrapper around `requireSession()` so route handlers become `export const GET = withAuth(async (req, { userId }) => { ... })` — eliminates the repeated `if (!session) return json401()` preamble. Also a single place to add request logging / rate-limit hooks.
+   - Add `json403` and `json429` helpers to `src/lib/api/errors.ts`.
+   - Tighten `Body.error` from `string` to a string-literal union (`type ErrorCode = "unauthorized" | "not_found" | "validation_failed" | ...`) to prevent error-string drift.
    - Drop the redundant defensive cast at `src/lib/api/session.ts:5`. Module augmentation in `src/types/next-auth.d.ts` already types `session.user.id`. Simplify to `if (!session?.user?.id) return null;` and `userId: session.user.id`.
-   - Add a `json403` helper to `src/lib/api/errors.ts` (e.g. `export const json403 = (b: Body = { error: "forbidden" }) => NextResponse.json(b, { status: 403 });`) before the first owner-checked route handler in Phase 5.
+   - Land all of the above as one commit at the start of Phase 5, before Task 5.1 implementation.
 
 3. **`.env.local`** has placeholder credentials. To actually run `npm run dev` you need real `GOOGLE_CLIENT_ID`/`SECRET` (Google Cloud Console → OAuth credentials), `NEXTAUTH_SECRET` (`openssl rand -base64 32`), and a working Postgres on `DATABASE_URL`.
 
