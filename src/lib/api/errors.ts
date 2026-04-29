@@ -6,8 +6,10 @@ export type ErrorCode =
   | "rate_limited"
   | "validation_failed"
   | "invalid_params"
+  | "invalid_body"
   | "handle_not_found"
   | "already_added"
+  | "name_exists"
   | "internal_error";
 export type Body = { error: ErrorCode; details?: unknown };
 export const json400 = (b: Body) => NextResponse.json(b, { status: 400 });
