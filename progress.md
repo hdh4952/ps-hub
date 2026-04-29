@@ -1,7 +1,7 @@
 # ps-hub — Progress Handoff
 
 > Read this file in a fresh session to pick up exactly where work stopped.
-> Last updated: 2026-04-29 (Phase 3 complete; Phase 4 next).
+> Last updated: 2026-04-29 (Phase 3 complete + Postgres provisioned on Neon; Phase 4 next).
 
 ## What this project is
 
@@ -23,7 +23,7 @@ If anything in this `progress.md` conflicts with those, **the spec/plan win**.
 
 - **Repo:** `C:\Users\User\Desktop\github\ps-hub`
 - **Remote:** `origin = https://github.com/hdh4952/ps-hub.git`. `main` tracks `origin/main`.
-- **Local Postgres:** NOT available in this environment (no Docker daemon, no native `psql`). Drizzle migrations are *generated* but not applied. The `.env.local` placeholder values are `xxx` for OAuth secrets — real values needed before `npm run dev` works.
+- **Postgres:** **Neon** (`ap-southeast-1`, project `neondb`). `DATABASE_URL` lives in `.env.local` (gitignored, real Neon pooler URL with `?sslmode=require`). Migration `0000_melted_mesmero.sql` applied 2026-04-29 — all 8 tables present (`accounts`, `sessions`, `users`, `verificationToken`, `groups`, `favorites`, `favorite_groups`, `cached_profiles`). No native `psql`; verify state via `node -e "require('postgres')(...)..."` one-liners. Drizzle config (`drizzle.config.ts`) loads `.env.local` first, falls back to `.env`. OAuth secrets (`GOOGLE_CLIENT_ID/SECRET`, `NEXTAUTH_SECRET`) are still `xxx` — required before `npm run dev` works in a browser.
 - **OS:** Windows 11. Shell: bash (Unix-style paths inside bash; native paths from PowerShell).
 
 ## Workflow protocol — IMPORTANT, DO NOT DEVIATE
@@ -60,19 +60,18 @@ This project is being executed under **superpowers:subagent-driven-development**
 
 `npm run typecheck` and `npm test` (3 tests) both pass.
 
-### Phase 1 — DB & Schema ✅ COMPLETE (Tasks 1.1+1.2+1.3 combined, 1 commit)
+### Phase 1 — DB & Schema ✅ COMPLETE (Tasks 1.1+1.2+1.3 combined, 1 commit + 2 follow-ups)
 
 | Task | Commit | Status |
 |---|---|---|
 | 1.1 Drizzle client + drizzle-kit config | `2831eb6` | ✅ |
 | 1.2 NextAuth schema (`auth.ts`) | `2831eb6` | ✅ |
 | 1.3 Domain schema + first migration | `2831eb6` | ✅ |
+| Phase 1 review fix-ups (drop redundant `favorites_user_idx`, fail-fast comment, regen migration → `0000_melted_mesmero.sql`) | `fe1e0d0` | ✅ |
+| `drizzle.config.ts` loads `.env.local` like Next.js | `a0bc070` | ✅ |
+| Migration applied to Neon (8 tables verified) | n/a — env action | ✅ |
 
-Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema/index}.ts`, `src/lib/db/migrations/0000_thick_absorbing_man.sql` (119 lines, 8 tables) + meta. Generation worked; **migration not yet applied** (no live Postgres in this env).
-
-**Forward-looking cleanups flagged in review** (deferred — see Pending below):
-- Drop redundant `favorites_user_idx` (covered by leftmost prefix of `favorites_user_platform_handle_uniq`).
-- Add comment to `src/lib/db/client.ts:6` documenting `loadEnv()` fail-fast intent at module import.
+Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema/index}.ts`, `src/lib/db/migrations/0000_melted_mesmero.sql` (post-cleanup, 8 tables) + meta.
 
 ### Phase 2 — Auth ✅ COMPLETE (4 tasks, 5 commits)
 
@@ -128,12 +127,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 
 ## Pending non-task items
 
-1. **Forward-looking cleanup** (Task 1.1–1.3 review):
-   - Delete `favorites_user_idx` from `src/lib/db/schema/domain.ts:34`. Re-run `npm run db:generate`. (Since no DB has been migrated yet, regenerating `0000_*.sql` is preferred over a `0001` add-migration.)
-   - Add a one-line comment in `src/lib/db/client.ts:6` documenting that `loadEnv()` is intentionally fail-fast at module load.
-   - Pick this up before any production data is loaded; a single small commit is enough.
-
-2. **Phase 5 entry bundle** (one commit, ~30 LOC, surfaced by Phase 2 holistic review):
+1. **Phase 5 entry bundle** (one commit, ~30 LOC, surfaced by Phase 2 holistic review):
    - `middleware.ts` matching `/api/:path*` (excluding `/api/auth/*`) that runs `auth()` and rejects unauthenticated requests at the edge — belt to `requireSession()`'s suspenders, prevents accidental missing `requireSession` call in a future route handler.
    - `withAuth(handler)` wrapper around `requireSession()` so route handlers become `export const GET = withAuth(async (req, { userId }) => { ... })` — eliminates the repeated `if (!session) return json401()` preamble. Also a single place to add request logging / rate-limit hooks.
    - Add `json403` and `json429` helpers to `src/lib/api/errors.ts`.
@@ -141,9 +135,11 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    - Drop the redundant defensive cast at `src/lib/api/session.ts:5`. Module augmentation in `src/types/next-auth.d.ts` already types `session.user.id`. Simplify to `if (!session?.user?.id) return null;` and `userId: session.user.id`.
    - Land all of the above as one commit at the start of Phase 5, before Task 5.1 implementation.
 
-3. **`rankLabel` casing consistency** (Phase 3 review nit) — Codeforces adapter returns raw CF casing for `rankLabel` (lowercase, e.g. `"legendary grandmaster"`) but the fallback string is title-case (`"Newbie"`). Decide on one casing convention when implementing `HandleCard` in Task 6.1; either normalize in the adapter or title-case at render time. Single-line change either way.
+2. **`rankLabel` casing consistency** (Phase 3 review nit) — Codeforces adapter returns raw CF casing for `rankLabel` (lowercase, e.g. `"legendary grandmaster"`) but the fallback string is title-case (`"Newbie"`). Decide on one casing convention when implementing `HandleCard` in Task 6.1; either normalize in the adapter or title-case at render time. Single-line change either way.
 
-4. **`.env.local`** has placeholder credentials. To actually run `npm run dev` you need real `GOOGLE_CLIENT_ID`/`SECRET` (Google Cloud Console → OAuth credentials), `NEXTAUTH_SECRET` (`openssl rand -base64 32`), and a working Postgres on `DATABASE_URL`.
+3. **`.env.local` OAuth + auth secrets** — `DATABASE_URL` is real (Neon). `GOOGLE_CLIENT_ID/SECRET` and `NEXTAUTH_SECRET` are still `xxx` placeholders. Required before `npm run dev` succeeds in a browser; not blocking for unit tests or DB integration tests. Generate `NEXTAUTH_SECRET` via `openssl rand -base64 32`; OAuth creds via Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application, redirect `http://localhost:3000/api/auth/callback/google`).
+
+4. **Neon credential rotation** — the `DATABASE_URL` was shared in chat during setup. Once any production data lands, rotate the DB password from Neon dashboard (Connection Details → Reset password) and update `.env.local`.
 
 ## Resuming in a fresh session — exact recipe
 
@@ -156,10 +152,13 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 2. **Verify state:**
    ```bash
    git status                  # should be clean (only `.omc/`, `docs/`, modified `next-env.d.ts` are untracked/uncommitted noise)
-   git log --oneline -10       # confirm last commit is 1530fce (`feat(adapters): AtCoder adapter + tier table + tests`)
+   git log --oneline -10       # confirm latest is `docs: progress.md — Postgres on Neon, schema applied`
    npm run typecheck           # PASS
    npm test                    # 11 tests PASS (3 sanity/env + 4 codeforces + 4 atcoder)
    git remote -v               # origin = https://github.com/hdh4952/ps-hub.git
+   # Postgres reachable (Neon — listed in `.env.local`, gitignored):
+   node -e "require('dotenv').config({path:'.env.local'});const s=require('postgres')(process.env.DATABASE_URL,{max:1});s\`SELECT count(*) FROM information_schema.tables WHERE table_schema='public'\`.then(r=>{console.log('tables:',r[0].count);return s.end();}).catch(e=>{console.error(e.message);process.exit(1);})"
+   # → tables: 8
    ```
 
 3. **Re-invoke the workflow skill:**
