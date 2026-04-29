@@ -1,16 +1,16 @@
 # ps-hub — Progress Handoff
 
 > Read this file in a fresh session to pick up exactly where work stopped.
-> Last updated: 2026-04-29 (Phase 5 entry bundle + Task 5.1 complete; Task 5.2 next).
+> Last updated: 2026-04-29 (Tasks 5.1, 5.2, 5.3 complete; Task 5.4 IDOR coverage next).
 
 ## TL;DR for the next session
 
 - ✅ **Phases 0–4 complete.** Bootstrap, DB schema, NextAuth, Codeforces+AtCoder adapters, profile-cache (TTL+SWR+force).
-- ✅ **Phase 5 in progress** — entry bundle (middleware + `withAuth` + `json403`/`json429` + `ErrorCode` union + `session.ts` cleanup) and Task 5.1 (`GET /api/profiles/[platform]/[handle]` + force rate-limit) both shipped, reviewed, and pushed.
+- ✅ **Phase 5 in progress** — entry bundle + Tasks 5.1, 5.2, 5.3 shipped, reviewed, fix-ups applied, pushed. `/api/profiles`, `/api/groups`, `/api/favorites` all live.
 - ✅ **Postgres provisioned** on Neon (`ap-southeast-1`). Two databases (`neondb` for app, `pshub_test` for integration tests). Both reachable; URLs in `.env.local`.
-- ✅ **`npm test` → 24/24 pass** (11 unit + 7 profile-cache integration + 6 profiles route integration). `npx tsc --noEmit` clean. Push-after-each-task discipline maintained throughout.
-- ⚙️ **Next**: Task 5.2 (`/api/groups` CRUD — `GET`/`POST` + `PATCH`/`DELETE`), then 5.3 (favorites CRUD), then 5.4 (IDOR auth tests).
-- 🟡 **Open notes**: `rankLabel` casing nit deferred to Phase 6.1; OAuth/`NEXTAUTH_SECRET` still placeholders (only blocks `npm run dev` in browser, not tests); Neon DB password should be rotated since it was shared in chat during setup.
+- ✅ **`npm test` → 35/35 pass** (11 unit + 7 profile-cache integration + 6 profiles route integration + 5 groups integration + 6 favorites integration). `npx tsc --noEmit` clean. Push-after-each-task discipline maintained throughout.
+- ⚙️ **Next**: Task 5.4 (IDOR auth tests at `tests/integration/api/authz.test.ts` — verifies user A cannot mutate user B's favorites), then Phase 6 (UI).
+- 🟡 **Open notes**: `rankLabel` casing nit deferred to Phase 6.1; OAuth/`NEXTAUTH_SECRET` still placeholders (only blocks `npm run dev` in browser, not tests); Neon DB password should be rotated since it was shared in chat during setup; `isUniqueViolation` duplicated in 2 route files (extract on next caller).
 
 ## What this project is
 
@@ -143,17 +143,25 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 | 5.1 GET /api/profiles + force rate-limit | `c7a9ec6` | ✅ |
 | 5.1 review fix-ups (error logging, `fetchStatus === "error"` no-payload → 500, `?force=true` accepted, +2 tests) | `2722a5b` | ✅ |
 | Test isolation fix (`fileParallelism: false` — Neon `pshub_test` truncate-vs-write race between profile-cache + profiles test files) | `4a8fa72` | ✅ |
-| 5.2 /api/groups CRUD | — | ⏳ NEXT |
-| 5.3 /api/favorites CRUD | — | ⏳ |
-| 5.4 IDOR auth tests | — | ⏳ |
+| 5.2 /api/groups CRUD (collection GET/POST + member PATCH/DELETE; +`invalid_body`/`name_exists` to `ErrorCode`; 3 integration tests) | `644f223` | ✅ |
+| 5.2 review fix-ups (UUID zod validation on `[id]` params before DB; DELETE wrapped in try/catch with `console.error`; +2 tests) | `694755f` | ✅ |
+| 5.3 /api/favorites CRUD (collection GET/POST with handle validation via `getProfile` + member PATCH alias/note/groupIds + DELETE; +`invalid_group_ids` to `ErrorCode`; 4 integration tests) | `5d509de` | ✅ |
+| 5.3 review fix-ups (PATCH multi-step writes wrapped in `db.transaction` with `InvalidGroupIdsError` sentinel; per-user 5s rate limit on POST `/api/favorites` via `src/lib/rate-limit/favorite-add.ts`; profile-cache.test.ts `afterEach` → `beforeEach` truncate to fix latent state-leak between integration test files; +2 tests) | `56dbcb0` | ✅ |
+| 5.4 IDOR auth tests | — | ⏳ NEXT |
 
-`npx tsc --noEmit` clean, `npm test` 24/24 pass after each commit.
+`npx tsc --noEmit` clean, `npm test` 35/35 pass after each commit.
 
 **Notable deviations / decisions in Phase 5 so far:**
-1. **`withAuth` adopted in Task 5.1.** The plan-verbatim Task 5.1 used `requireSession()` + `json401()` inline; we replaced with `withAuth<Ctx>(...)` since the entry bundle exists specifically to standardize this. The route's spec compliance still PASSED — `withAuth` calls `requireSession()` internally, and the test mock pattern (`vi.mock("@/lib/api/session", ...)`) still works.
-2. **`?force=true` accepted (review fix-up).** Plan accepted only `?force=1`. Front-end devs writing `?force=true` would silently get a non-force response. Now both `"1"` and `"true"` opt in; other values are ignored.
-3. **`fetchStatus === "error"` with `displayName === null` → 500 (review fix-up).** Plan would have returned 200 with all-null fields when the cache layer wrote a brand-new error row (transient upstream failure with no prior cache). Now surfaces as 500 with `error: "internal_error"` so the client doesn't render an empty card. Stale rows still flow through 200 (preserving spec's "stale > empty" rule).
-4. **`fileParallelism: false` in `vitest.config.ts`.** Both `tests/integration/cache/profile-cache.test.ts` and `tests/integration/api/profiles.test.ts` share the Neon `pshub_test` DB and call `truncateAll`. With default file parallelism, they raced and one file's truncate wiped rows another file just inserted. Total integration runtime grows from ~7s to ~11s; correctness > speed.
+1. **`withAuth` adopted in Tasks 5.1/5.2/5.3.** The plan-verbatim tasks use `requireSession()` + `json401()` inline; we replaced with `withAuth<Ctx>(...)` since the entry bundle exists specifically to standardize this. Spec compliance reviews PASSED — `withAuth` calls `requireSession()` internally, and the test mock pattern (`vi.mock("@/lib/api/session", ...)`) still works.
+2. **`?force=true` accepted (Task 5.1 review fix-up).** Plan accepted only `?force=1`. Front-end devs writing `?force=true` would silently get a non-force response. Now both `"1"` and `"true"` opt in; other values are ignored.
+3. **`fetchStatus === "error"` with `displayName === null` → 500 (Task 5.1 review fix-up).** Plan would have returned 200 with all-null fields when the cache layer wrote a brand-new error row (transient upstream failure with no prior cache). Now surfaces as 500 with `error: "internal_error"` so the client doesn't render an empty card. Stale rows still flow through 200 (preserving spec's "stale > empty" rule).
+4. **`fileParallelism: false` in `vitest.config.ts`.** Both `tests/integration/cache/profile-cache.test.ts` and `tests/integration/api/profiles.test.ts` share the Neon `pshub_test` DB and call `truncateAll`. With default file parallelism, they raced and one file's truncate wiped rows another file just inserted. Total integration runtime grows from ~7s to ~22s with all 5 integration files; correctness > speed.
+5. **`isUniqueViolation` helper inlined in each route (Task 5.2).** The plan used `e: any` (type-unsafe) for unique-violation detection. Replaced with a typed `isUniqueViolation(err: unknown): boolean` helper using safe narrowing. Currently duplicated across `groups/route.ts` and `favorites/route.ts`; will extract to `src/lib/db/errors.ts` when a third caller appears.
+6. **UUID zod validation on dynamic `[id]` params (Task 5.2 review fix-up).** Plan passed raw path segments to `eq(table.id, id)`, which raises Postgres `invalid input syntax for type uuid` on non-UUID input — surfacing as a misleading 500. All `[id]` route handlers now validate with `z.object({ id: z.string().uuid() })` first and return 400 `invalid_params` on failure.
+7. **DELETE handlers wrapped in try/catch with `console.error` (Task 5.2 review fix-up).** Plan's DELETE handlers had no error handling, so DB errors propagated as unhandled rejections with no log line. All DELETE handlers now match the POST/PATCH error logging pattern.
+8. **`allowFavoriteAdd` per-user rate limit on POST `/api/favorites` (Task 5.3 review fix-up).** Plan had no rate limit on the POST path that calls `getProfile()`; an authenticated attacker could amplify upstream traffic and pollute `cached_profiles` with arbitrary handles. Added a 5-second per-user debounce mirroring `force-refresh.ts`. The duplicate-handle test resets the limiter inline between its two POSTs so it still exercises the 409 case-insensitive duplicate path.
+9. **PATCH `/api/favorites/[id]` wrapped in `db.transaction` (Task 5.3 review fix-up).** Plan ran UPDATE favorite + DELETE favoriteGroups + INSERT favoriteGroups as separate statements; partial failure left state half-applied. Now atomic. Uses an `InvalidGroupIdsError` sentinel to propagate the controlled 400 path out of the tx callback (sentinel throw triggers transaction rollback, which is desired — don't apply alias/note updates if groupIds are bad).
+10. **profile-cache.test.ts switched from `afterEach` to `beforeEach` truncate (Task 5.3 review fix-up).** Latent bug surfaced when favorites tests started writing more cache rows: profile-cache.test.ts's first test inherited leftover state from the previous integration file. Now every integration test file uses `beforeEach` truncate, guaranteeing each test starts from a clean DB regardless of file order.
 
 ### Phase 6 — UI ⏳ NOT STARTED
 - 6.1 HandleCard pure component
@@ -171,10 +179,12 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 
 1. **`rankLabel` casing consistency** (Phase 3 review nit) — Codeforces adapter returns raw CF casing for `rankLabel` (lowercase, e.g. `"legendary grandmaster"`) but the fallback string is title-case (`"Newbie"`). Decide on one casing convention when implementing `HandleCard` in Task 6.1; either normalize in the adapter or title-case at render time. Single-line change either way.
 
-2. **Task 5.1 deferred nits** (flagged in code-quality review, not blocking):
+2. **Phase 5 deferred nits** (flagged in code-quality reviews, not blocking):
    - `Cache-Control: private, no-store` header on `/api/profiles/...` responses (defense against cross-user CDN caching). One-line addition when first edge-cache concern surfaces.
-   - Inject a clock into `src/lib/rate-limit/force-refresh.ts` for symmetry with `profile-cache._setNowForTest` — so the "5s" rate-limit test doesn't depend on real wall-clock latency between two synchronous `GET()` calls.
-   - Map in `force-refresh.ts` grows unbounded with distinct authenticated `userId`s. Spec acknowledges this moves to Redis later; consider adding a `// TODO(phase-5+)` comment.
+   - Inject a clock into `src/lib/rate-limit/force-refresh.ts` and `favorite-add.ts` for symmetry with `profile-cache._setNowForTest` — so the "5s" rate-limit tests don't depend on real wall-clock latency between two synchronous calls.
+   - Map in `force-refresh.ts` and `favorite-add.ts` grows unbounded with distinct authenticated `userId`s. Spec acknowledges this moves to Redis later; consider adding a `// TODO(phase-5+)` comment and a shared `windowed-rate-limit.ts` factory once a third caller appears.
+   - `isUniqueViolation` helper duplicated across `groups/route.ts` and `favorites/route.ts`. Extract to `src/lib/db/errors.ts` (or similar) when a third caller appears.
+   - `id` field in POST `/api/favorites` 201 response duplicates `favorite.id`. Drop `id` and rely on `favorite.id` next time the response shape is touched.
 
 3. **`.env.local` OAuth + auth secrets** — `DATABASE_URL` is real (Neon). `GOOGLE_CLIENT_ID/SECRET` and `NEXTAUTH_SECRET` are still `xxx` placeholders. Required before `npm run dev` succeeds in a browser; not blocking for unit tests or DB integration tests. Generate `NEXTAUTH_SECRET` via `openssl rand -base64 32`; OAuth creds via Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application, redirect `http://localhost:3000/api/auth/callback/google`).
 
@@ -193,7 +203,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    git status                  # should be clean (only `.omc/`, `docs/`, modified `next-env.d.ts` are untracked/uncommitted noise)
    git log --oneline -10       # head should be the most recent `docs: progress.md — …` commit; cross-check the SHA against the Phase status table above
    npm run typecheck           # PASS
-   npm test                    # 24 tests PASS (11 unit + 7 profile-cache integration + 6 profiles route integration)
+   npm test                    # 35 tests PASS (11 unit + 7 profile-cache integration + 6 profiles route + 5 groups route + 6 favorites route)
    git remote -v               # origin = https://github.com/hdh4952/ps-hub.git
    # Both Postgres DBs reachable on Neon (URLs listed in `.env.local`, gitignored):
    node -e "require('dotenv').config({path:'.env.local'});const s=require('postgres')(process.env.DATABASE_URL,{max:1});s\`SELECT count(*) FROM information_schema.tables WHERE table_schema='public'\`.then(r=>{console.log('main tables:',r[0].count);return s.end();}).catch(e=>{console.error(e.message);process.exit(1);})"
@@ -206,7 +216,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    ```
    /superpowers:subagent-driven-development
    ```
-   then continue from **Task 5.2** in the plan (`/api/groups` CRUD — `GET`/`POST` at `src/app/api/groups/route.ts` + `PATCH`/`DELETE` at `src/app/api/groups/[id]/route.ts`, integration tests at `tests/integration/api/groups.test.ts`). Use `withAuth<Ctx>(...)` from the entry bundle (see `src/lib/api/with-auth.ts`); use `json4xx`/`json5xx` helpers from `src/lib/api/errors.ts`. Plan section starts at line 1634 of `docs/superpowers/plans/2026-04-29-ps-hub-mvp.md`.
+   then continue from **Task 5.4** in the plan (`tests/integration/api/authz.test.ts` — IDOR coverage: verifies user A cannot DELETE user B's favorite; route already enforces `WHERE userId = session.userId` at the SQL layer for both PATCH and DELETE in groups/favorites). Plan section starts at line 1975 of `docs/superpowers/plans/2026-04-29-ps-hub-mvp.md`. After Task 5.4, Phase 5 is complete and Phase 6 (UI) begins with Task 6.1 (HandleCard pure component, plan line ~2036).
 
 4. **Pattern to repeat for every remaining task:** see "Workflow protocol" above. Do not skip the spec review or push step.
 
