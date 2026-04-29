@@ -7,6 +7,7 @@ import { loadEnv } from "@/env";
 const env = loadEnv();
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  secret: env.NEXTAUTH_SECRET,
   adapter: DrizzleAdapter(db),
   session: { strategy: "jwt" },
   providers: [
@@ -16,7 +17,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async jwt({ token, user }) { if (user?.id) token.uid = user.id; return token; },
     async session({ session, token }) {
-      if (token.uid && session.user) (session.user as any).id = token.uid;
+      if (token.uid && session.user) session.user.id = token.uid;
       return session;
     },
   },
