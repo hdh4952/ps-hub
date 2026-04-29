@@ -23,6 +23,8 @@ export function HandleCard(p: HandleCardProps) {
     p.fetchStatus === "not_found" ? "border-red-200 bg-red-50"
     : p.fetchStatus === "error"   ? "border-amber-200 bg-amber-50"
     : "border-neutral-200 bg-white";
+  // Don't apply rank color to text shown over the red/amber status backgrounds — would otherwise leak a stale color from a prior successful fetch.
+  const nameColor = p.fetchStatus === "ok" ? (p.rankColor ?? undefined) : undefined;
   return (
     <Link
       href={`/handles/${p.platform}/${p.handle}`}
@@ -31,7 +33,7 @@ export function HandleCard(p: HandleCardProps) {
       <div className="flex items-baseline justify-between">
         <div>
           <div className="text-xs uppercase tracking-wide text-neutral-500">{platformLabel[p.platform]}</div>
-          <div className="text-base font-semibold" style={{ color: p.rankColor ?? undefined }}>
+          <div className="text-base font-semibold" style={{ color: nameColor }}>
             {p.alias ?? p.displayName ?? p.handle}
           </div>
           {p.alias && <div className="text-xs text-neutral-500">@{p.handle}</div>}
@@ -39,7 +41,7 @@ export function HandleCard(p: HandleCardProps) {
         <div className="text-right">
           {p.fetchStatus === "ok" ? (
             <>
-              <div className="text-xl font-bold" style={{ color: p.rankColor ?? undefined }}>{p.currentRating ?? 0}</div>
+              <div className="text-xl font-bold" style={{ color: nameColor }}>{p.currentRating ?? 0}</div>
               <div className="text-xs text-neutral-500">max {p.maxRating ?? 0} · {p.rankLabel}</div>
             </>
           ) : p.fetchStatus === "not_found" ? (
