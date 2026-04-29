@@ -1,14 +1,15 @@
 # ps-hub — Progress Handoff
 
 > Read this file in a fresh session to pick up exactly where work stopped.
-> Last updated: 2026-04-29 (Phase 4 complete; Phase 5 next).
+> Last updated: 2026-04-29 (Phase 5 entry bundle + Task 5.1 complete; Task 5.2 next).
 
 ## TL;DR for the next session
 
 - ✅ **Phases 0–4 complete.** Bootstrap, DB schema, NextAuth, Codeforces+AtCoder adapters, profile-cache (TTL+SWR+force).
+- ✅ **Phase 5 in progress** — entry bundle (middleware + `withAuth` + `json403`/`json429` + `ErrorCode` union + `session.ts` cleanup) and Task 5.1 (`GET /api/profiles/[platform]/[handle]` + force rate-limit) both shipped, reviewed, and pushed.
 - ✅ **Postgres provisioned** on Neon (`ap-southeast-1`). Two databases (`neondb` for app, `pshub_test` for integration tests). Both reachable; URLs in `.env.local`.
-- ✅ **`npm test` → 18/18 pass** (11 unit + 7 profile-cache integration). `npx tsc --noEmit` clean. Push-after-each-task discipline maintained throughout.
-- ⚙️ **Next**: Phase 5 entry bundle (Pending #1 below — middleware, `withAuth`, `json403/429`, `ErrorCode` literal union, `session.ts` cleanup — 1 commit, ~30 LOC), then Task 5.1 (`GET /api/profiles/[platform]/[handle]` + force rate-limit).
+- ✅ **`npm test` → 24/24 pass** (11 unit + 7 profile-cache integration + 6 profiles route integration). `npx tsc --noEmit` clean. Push-after-each-task discipline maintained throughout.
+- ⚙️ **Next**: Task 5.2 (`/api/groups` CRUD — `GET`/`POST` + `PATCH`/`DELETE`), then 5.3 (favorites CRUD), then 5.4 (IDOR auth tests).
 - 🟡 **Open notes**: `rankLabel` casing nit deferred to Phase 6.1; OAuth/`NEXTAUTH_SECRET` still placeholders (only blocks `npm run dev` in browser, not tests); Neon DB password should be rotated since it was shared in chat during setup.
 
 ## What this project is
@@ -133,12 +134,26 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 4. Added `afterAll(() => testDb.sql.end())` (plan omitted; prevents hung connections).
 5. **Fix-up commit additions**: `ERROR_TTL_MS = 30s` distinct from happy-path `TTL_MS = 10min` — error rows expire fast so transient upstream failures don't block a handle for 10 minutes. Covered by a new 7th test.
 
-### Phase 5 — API Routes ⚙️ NEXT
-- (Pending bundle below — middleware + `withAuth` + `json403`/`json429` + `ErrorCode` literal union — lands as 1 commit at start of Phase 5.)
-- 5.1 GET /api/profiles + force rate-limit
-- 5.2 /api/groups CRUD
-- 5.3 /api/favorites CRUD
-- 5.4 IDOR auth tests
+### Phase 5 — API Routes ⚙️ IN PROGRESS
+
+| Task | Commit | Status |
+|---|---|---|
+| Phase 5 entry bundle (middleware + `withAuth` + `json403`/`json429` + `ErrorCode` union + `session.ts` cleanup) | `034f30e` | ✅ |
+| Phase 5 entry bundle review fix-ups (matcher anchored on `auth/`, middleware reuses `json401()`, `withAuth` default `TCtx`, `AuthContext` typed via `Session["user"]`) | `f64204b` | ✅ |
+| 5.1 GET /api/profiles + force rate-limit | `c7a9ec6` | ✅ |
+| 5.1 review fix-ups (error logging, `fetchStatus === "error"` no-payload → 500, `?force=true` accepted, +2 tests) | `2722a5b` | ✅ |
+| Test isolation fix (`fileParallelism: false` — Neon `pshub_test` truncate-vs-write race between profile-cache + profiles test files) | `4a8fa72` | ✅ |
+| 5.2 /api/groups CRUD | — | ⏳ NEXT |
+| 5.3 /api/favorites CRUD | — | ⏳ |
+| 5.4 IDOR auth tests | — | ⏳ |
+
+`npx tsc --noEmit` clean, `npm test` 24/24 pass after each commit.
+
+**Notable deviations / decisions in Phase 5 so far:**
+1. **`withAuth` adopted in Task 5.1.** The plan-verbatim Task 5.1 used `requireSession()` + `json401()` inline; we replaced with `withAuth<Ctx>(...)` since the entry bundle exists specifically to standardize this. The route's spec compliance still PASSED — `withAuth` calls `requireSession()` internally, and the test mock pattern (`vi.mock("@/lib/api/session", ...)`) still works.
+2. **`?force=true` accepted (review fix-up).** Plan accepted only `?force=1`. Front-end devs writing `?force=true` would silently get a non-force response. Now both `"1"` and `"true"` opt in; other values are ignored.
+3. **`fetchStatus === "error"` with `displayName === null` → 500 (review fix-up).** Plan would have returned 200 with all-null fields when the cache layer wrote a brand-new error row (transient upstream failure with no prior cache). Now surfaces as 500 with `error: "internal_error"` so the client doesn't render an empty card. Stale rows still flow through 200 (preserving spec's "stale > empty" rule).
+4. **`fileParallelism: false` in `vitest.config.ts`.** Both `tests/integration/cache/profile-cache.test.ts` and `tests/integration/api/profiles.test.ts` share the Neon `pshub_test` DB and call `truncateAll`. With default file parallelism, they raced and one file's truncate wiped rows another file just inserted. Total integration runtime grows from ~7s to ~11s; correctness > speed.
 
 ### Phase 6 — UI ⏳ NOT STARTED
 - 6.1 HandleCard pure component
@@ -154,15 +169,12 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 
 ## Pending non-task items
 
-1. **Phase 5 entry bundle** (one commit, ~30 LOC, surfaced by Phase 2 holistic review):
-   - `middleware.ts` matching `/api/:path*` (excluding `/api/auth/*`) that runs `auth()` and rejects unauthenticated requests at the edge — belt to `requireSession()`'s suspenders, prevents accidental missing `requireSession` call in a future route handler.
-   - `withAuth(handler)` wrapper around `requireSession()` so route handlers become `export const GET = withAuth(async (req, { userId }) => { ... })` — eliminates the repeated `if (!session) return json401()` preamble. Also a single place to add request logging / rate-limit hooks.
-   - Add `json403` and `json429` helpers to `src/lib/api/errors.ts`.
-   - Tighten `Body.error` from `string` to a string-literal union (`type ErrorCode = "unauthorized" | "not_found" | "validation_failed" | ...`) to prevent error-string drift.
-   - Drop the redundant defensive cast at `src/lib/api/session.ts:5`. Module augmentation in `src/types/next-auth.d.ts` already types `session.user.id`. Simplify to `if (!session?.user?.id) return null;` and `userId: session.user.id`.
-   - Land all of the above as one commit at the start of Phase 5, before Task 5.1 implementation.
+1. **`rankLabel` casing consistency** (Phase 3 review nit) — Codeforces adapter returns raw CF casing for `rankLabel` (lowercase, e.g. `"legendary grandmaster"`) but the fallback string is title-case (`"Newbie"`). Decide on one casing convention when implementing `HandleCard` in Task 6.1; either normalize in the adapter or title-case at render time. Single-line change either way.
 
-2. **`rankLabel` casing consistency** (Phase 3 review nit) — Codeforces adapter returns raw CF casing for `rankLabel` (lowercase, e.g. `"legendary grandmaster"`) but the fallback string is title-case (`"Newbie"`). Decide on one casing convention when implementing `HandleCard` in Task 6.1; either normalize in the adapter or title-case at render time. Single-line change either way.
+2. **Task 5.1 deferred nits** (flagged in code-quality review, not blocking):
+   - `Cache-Control: private, no-store` header on `/api/profiles/...` responses (defense against cross-user CDN caching). One-line addition when first edge-cache concern surfaces.
+   - Inject a clock into `src/lib/rate-limit/force-refresh.ts` for symmetry with `profile-cache._setNowForTest` — so the "5s" rate-limit test doesn't depend on real wall-clock latency between two synchronous `GET()` calls.
+   - Map in `force-refresh.ts` grows unbounded with distinct authenticated `userId`s. Spec acknowledges this moves to Redis later; consider adding a `// TODO(phase-5+)` comment.
 
 3. **`.env.local` OAuth + auth secrets** — `DATABASE_URL` is real (Neon). `GOOGLE_CLIENT_ID/SECRET` and `NEXTAUTH_SECRET` are still `xxx` placeholders. Required before `npm run dev` succeeds in a browser; not blocking for unit tests or DB integration tests. Generate `NEXTAUTH_SECRET` via `openssl rand -base64 32`; OAuth creds via Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application, redirect `http://localhost:3000/api/auth/callback/google`).
 
@@ -181,7 +193,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    git status                  # should be clean (only `.omc/`, `docs/`, modified `next-env.d.ts` are untracked/uncommitted noise)
    git log --oneline -10       # head should be the most recent `docs: progress.md — …` commit; cross-check the SHA against the Phase status table above
    npm run typecheck           # PASS
-   npm test                    # 18 tests PASS (11 unit + 7 profile-cache integration)
+   npm test                    # 24 tests PASS (11 unit + 7 profile-cache integration + 6 profiles route integration)
    git remote -v               # origin = https://github.com/hdh4952/ps-hub.git
    # Both Postgres DBs reachable on Neon (URLs listed in `.env.local`, gitignored):
    node -e "require('dotenv').config({path:'.env.local'});const s=require('postgres')(process.env.DATABASE_URL,{max:1});s\`SELECT count(*) FROM information_schema.tables WHERE table_schema='public'\`.then(r=>{console.log('main tables:',r[0].count);return s.end();}).catch(e=>{console.error(e.message);process.exit(1);})"
@@ -194,7 +206,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    ```
    /superpowers:subagent-driven-development
    ```
-   then continue from the **Phase 5 entry bundle** (Pending #1 below — one commit, ~30 LOC: middleware, `withAuth`, `json403`/`json429`, `ErrorCode` literal union, `session.ts` cast cleanup), then Task 5.1 (`GET /api/profiles/[platform]/[handle]` with force + rate-limit).
+   then continue from **Task 5.2** in the plan (`/api/groups` CRUD — `GET`/`POST` at `src/app/api/groups/route.ts` + `PATCH`/`DELETE` at `src/app/api/groups/[id]/route.ts`, integration tests at `tests/integration/api/groups.test.ts`). Use `withAuth<Ctx>(...)` from the entry bundle (see `src/lib/api/with-auth.ts`); use `json4xx`/`json5xx` helpers from `src/lib/api/errors.ts`. Plan section starts at line 1634 of `docs/superpowers/plans/2026-04-29-ps-hub-mvp.md`.
 
 4. **Pattern to repeat for every remaining task:** see "Workflow protocol" above. Do not skip the spec review or push step.
 
