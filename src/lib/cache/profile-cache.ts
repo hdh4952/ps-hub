@@ -5,9 +5,15 @@ import { getAdapter } from "@/lib/adapters";
 import type { Platform } from "@/lib/adapters/types";
 
 const TTL_MS = 10 * 60 * 1000;
+const ERROR_TTL_MS = 30 * 1000; // retry error rows aggressively — transient upstream failures shouldn't block a handle for 10 minutes
+
+function ttlFor(row: { fetchStatus: string }): number {
+  return row.fetchStatus === "error" ? ERROR_TTL_MS : TTL_MS;
+}
 
 let _now: () => Date = () => new Date();
 export function _setNowForTest(d: Date) { _now = () => d; }
+export function _resetNowForTest() { _now = () => new Date(); }
 
 export type CachedRow = typeof cachedProfiles.$inferSelect;
 
@@ -21,7 +27,7 @@ export async function getProfile(
     .where(and(eq(cachedProfiles.platform, platform), eq(cachedProfiles.handleLc, handleLc)))
     .limit(1).then((r) => r[0]);
 
-  const fresh = existing?.fetchedAt && _now().getTime() - existing.fetchedAt.getTime() < TTL_MS;
+  const fresh = existing?.fetchedAt && _now().getTime() - existing.fetchedAt.getTime() < ttlFor(existing);
   if (existing && fresh && !opts.force) return existing;
 
   // Refresh
@@ -42,7 +48,7 @@ export async function getProfile(
         maxRating: result.maxRating,
         rankLabel: result.rankLabel,
         rankColor: result.rankColor,
-        lastContests: result.lastContests as unknown as object,
+        lastContests: result.lastContests,
         fetchedAt: _now(), fetchStatus: "ok", fetchError: null,
       });
     }

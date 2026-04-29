@@ -11,5 +11,5 @@ export async function createTestDb(url = process.env.TEST_DATABASE_URL!) {
 }
 
 export async function truncateAll(sql: postgres.Sql) {
-  await sql`TRUNCATE cached_profiles, favorite_groups, favorites, groups, accounts, sessions, users RESTART IDENTITY CASCADE`;
+  await sql`TRUNCATE cached_profiles, favorite_groups, favorites, groups, accounts, sessions, "verificationToken", users RESTART IDENTITY CASCADE`;
 }

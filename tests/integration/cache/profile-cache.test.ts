@@ -8,8 +8,16 @@ vi.mock("@/lib/adapters", async (orig) => {
 });
 
 let testDb: Awaited<ReturnType<typeof createTestDb>>;
-beforeAll(async () => { testDb = await createTestDb(); });
-afterEach(async () => { await truncateAll(testDb.sql); adapterMock.fetch.mockReset(); });
+beforeAll(async () => {
+  testDb = await createTestDb();
+  vi.doMock("@/lib/db/client", () => ({ db: testDb.db, sql: testDb.sql }));
+});
+afterEach(async () => {
+  await truncateAll(testDb.sql);
+  adapterMock.fetch.mockReset();
+  const { _resetNowForTest } = await import("@/lib/cache/profile-cache");
+  _resetNowForTest();
+});
 afterAll(async () => { await testDb.sql.end(); });
 
 const sample = {
@@ -20,7 +28,6 @@ const sample = {
 describe("profile-cache", () => {
   it("populates cache on first call (miss)", async () => {
     adapterMock.fetch.mockResolvedValueOnce(sample);
-    vi.doMock("@/lib/db/client", () => ({ db: testDb.db, sql: testDb.sql }));
     const { getProfile } = await import("@/lib/cache/profile-cache");
     const res = await getProfile("codeforces", "tourist");
     expect(res.fetchStatus).toBe("ok");
@@ -71,6 +78,20 @@ describe("profile-cache", () => {
     const { getProfile } = await import("@/lib/cache/profile-cache");
     await getProfile("codeforces", "tourist");
     await getProfile("codeforces", "tourist", { force: true });
+    expect(adapterMock.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries error rows after the short error TTL", async () => {
+    adapterMock.fetch
+      .mockRejectedValueOnce(new Error("upstream 503"))
+      .mockResolvedValueOnce(sample);
+    const { getProfile, _setNowForTest } = await import("@/lib/cache/profile-cache");
+    _setNowForTest(new Date("2026-04-29T00:00:00Z"));
+    const r1 = await getProfile("codeforces", "tourist");
+    expect(r1.fetchStatus).toBe("error");
+    _setNowForTest(new Date("2026-04-29T00:00:31Z")); // > 30 seconds
+    const r2 = await getProfile("codeforces", "tourist");
+    expect(r2.fetchStatus).toBe("ok");
     expect(adapterMock.fetch).toHaveBeenCalledTimes(2);
   });
 });
