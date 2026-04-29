@@ -10,6 +10,7 @@ export type ErrorCode =
   | "handle_not_found"
   | "already_added"
   | "name_exists"
+  | "invalid_group_ids"
   | "internal_error";
 export type Body = { error: ErrorCode; details?: unknown };
 export const json400 = (b: Body) => NextResponse.json(b, { status: 400 });
