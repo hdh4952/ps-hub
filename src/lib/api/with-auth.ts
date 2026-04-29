@@ -1,8 +1,11 @@
 import type { NextResponse } from "next/server";
+import type { Session } from "next-auth";
 import { json401 } from "@/lib/api/errors";
 import { requireSession } from "@/lib/api/session";
 
-export type AuthContext = { userId: string; user: NonNullable<Awaited<ReturnType<typeof requireSession>>>["user"] };
+export type AuthContext = { userId: string; user: NonNullable<Session["user"]> };
+
+type DefaultRouteCtx = { params?: Promise<Record<string, string | string[] | undefined>> };
 
 type RouteHandler<TCtx> = (
   req: Request,
@@ -10,7 +13,7 @@ type RouteHandler<TCtx> = (
   auth: AuthContext,
 ) => Promise<Response | NextResponse>;
 
-export function withAuth<TCtx>(handler: RouteHandler<TCtx>) {
+export function withAuth<TCtx = DefaultRouteCtx>(handler: RouteHandler<TCtx>) {
   return async (req: Request, ctx: TCtx): Promise<Response | NextResponse> => {
     const session = await requireSession();
     if (!session) return json401();
