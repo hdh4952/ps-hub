@@ -5,7 +5,7 @@ import { requireSession } from "@/lib/api/session";
 
 export type AuthContext = { userId: string; user: NonNullable<Session["user"]> };
 
-type DefaultRouteCtx = { params?: Promise<Record<string, string | string[] | undefined>> };
+type DefaultRouteCtx = { params: Promise<Record<string, string | string[] | undefined>> };
 
 type RouteHandler<TCtx> = (
   req: Request,
