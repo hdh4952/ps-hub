@@ -10,7 +10,7 @@
 - ✅ **Postgres provisioned** on Neon (`ap-southeast-1`). Two databases (`neondb` for app, `pshub_test` for integration tests). Both reachable; URLs in `.env.local`.
 - ✅ **`npm test` → 36/36 pass** (11 unit + 7 profile-cache integration + 6 profiles route + 5 groups + 6 favorites + 1 authz IDOR). `npx tsc --noEmit` clean. Push-after-each-task discipline maintained throughout.
 - ⏭️ **Next**: Phase 6 — Task 6.1 (HandleCard pure component, plan line ~2036), then 6.2–6.6 (Dashboard, /groups, /add, handle detail).
-- 🟡 **Open notes**: `rankLabel` casing nit deferred to Phase 6.1; OAuth/`NEXTAUTH_SECRET` still placeholders (only blocks `npm run dev` in browser, not tests); Neon DB password should be rotated since it was shared in chat during setup; `isUniqueViolation` duplicated in 2 route files (extract on next caller).
+- 🟡 **Open notes**: OAuth/`NEXTAUTH_SECRET` still placeholders (only blocks `npm run dev` in browser, not tests); Neon DB password should be rotated since it was shared in chat during setup; `isUniqueViolation` duplicated in 2 route files (extract on next caller).
 
 ## What this project is
 
@@ -115,8 +115,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 
 **Fixtures captured live** (no need to re-run): tourist's CF userinfo + 302-entry rating history, AtCoder's 140-entry contest history. All under `src/lib/adapters/__fixtures__/`.
 
-**Forward-looking nit flagged in 3.1+3.2 review** (deferred to UI phase — see Pending below):
-- `src/lib/adapters/codeforces.ts` `rankLabel` returns raw CF casing (e.g. `"legendary grandmaster"`) but the fallback string is title-case `"Newbie"`. Inconsistent. Either lowercase the fallback or title-case in the UI render layer (Phase 6 — `HandleCard`).
+**Forward-looking nit flagged in 3.1+3.2 review** — RESOLVED before Phase 6: `src/lib/adapters/codeforces.ts` now title-cases `rankLabel` via a small `toTitleCase` helper. CF returns lowercase (`"legendary grandmaster"`); adapter normalizes to spec convention (`"Legendary Grandmaster"`). Locked in by `tests/unit/adapters/codeforces.test.ts` assertion.
 
 ### Phase 4 — Cache ✅ COMPLETE (1 task, 2 commits)
 
@@ -178,9 +177,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 
 ## Pending non-task items
 
-1. **`rankLabel` casing consistency** (Phase 3 review nit) — Codeforces adapter returns raw CF casing for `rankLabel` (lowercase, e.g. `"legendary grandmaster"`) but the fallback string is title-case (`"Newbie"`). Decide on one casing convention when implementing `HandleCard` in Task 6.1; either normalize in the adapter or title-case at render time. Single-line change either way.
-
-2. **Phase 5 deferred nits** (flagged in code-quality reviews, not blocking):
+1. **Phase 5 deferred nits** (flagged in code-quality reviews, not blocking):
    - `Cache-Control: private, no-store` header on `/api/profiles/...` responses (defense against cross-user CDN caching). One-line addition when first edge-cache concern surfaces.
    - Inject a clock into `src/lib/rate-limit/force-refresh.ts` and `favorite-add.ts` for symmetry with `profile-cache._setNowForTest` — so the "5s" rate-limit tests don't depend on real wall-clock latency between two synchronous calls.
    - Map in `force-refresh.ts` and `favorite-add.ts` grows unbounded with distinct authenticated `userId`s. Spec acknowledges this moves to Redis later; consider adding a `// TODO(phase-5+)` comment and a shared `windowed-rate-limit.ts` factory once a third caller appears.
@@ -188,9 +185,9 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    - `id` field in POST `/api/favorites` 201 response duplicates `favorite.id`. Drop `id` and rely on `favorite.id` next time the response shape is touched.
    - **Task 5.4 authz scaffold hardening** (pick up when adding PATCH-IDOR / groups-IDOR cases): assert `expect(c.status).toBe(201)` after the userB POST in `tests/integration/api/authz.test.ts` to localize failures; add `adapterMock.fetch.mockReset()` in `beforeEach` (matches `favorites.test.ts:23`) so future `mockResolvedValueOnce` queues don't leak between tests; consider a one-line comment about the mutable `currentUser` closure not being safe under `Promise.all` across user contexts.
 
-3. **`.env.local` OAuth + auth secrets** — `DATABASE_URL` is real (Neon). `GOOGLE_CLIENT_ID/SECRET` and `NEXTAUTH_SECRET` are still `xxx` placeholders. Required before `npm run dev` succeeds in a browser; not blocking for unit tests or DB integration tests. Generate `NEXTAUTH_SECRET` via `openssl rand -base64 32`; OAuth creds via Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application, redirect `http://localhost:3000/api/auth/callback/google`).
+2. **`.env.local` OAuth + auth secrets** — `DATABASE_URL` is real (Neon). `GOOGLE_CLIENT_ID/SECRET` and `NEXTAUTH_SECRET` are still `xxx` placeholders. Required before `npm run dev` succeeds in a browser; not blocking for unit tests or DB integration tests. Generate `NEXTAUTH_SECRET` via `openssl rand -base64 32`; OAuth creds via Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application, redirect `http://localhost:3000/api/auth/callback/google`).
 
-4. **Neon credential rotation** — the `DATABASE_URL` was shared in chat during setup. Once any production data lands, rotate the DB password from Neon dashboard (Connection Details → Reset password) and update `.env.local`.
+3. **Neon credential rotation** — the `DATABASE_URL` was shared in chat during setup. Once any production data lands, rotate the DB password from Neon dashboard (Connection Details → Reset password) and update `.env.local`.
 
 ## Resuming in a fresh session — exact recipe
 
@@ -218,7 +215,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    ```
    /superpowers:subagent-driven-development
    ```
-   then continue from **Task 6.1** in the plan (`src/app/(app)/_components/HandleCard.tsx` — pure presentational component for a handle card; props include `platform`, `handle`, `alias`, `displayName`, `currentRating`, `maxRating`, `rankLabel`, `rankColor`, `fetchStatus`, `lastContests[]`; renders a styled `<Link href={...}>` with platform label, alias-or-displayName-or-handle, current/max rating + rankLabel, and last 3 contest deltas). Plan section starts at line 2036 of `docs/superpowers/plans/2026-04-29-ps-hub-mvp.md`. **At Task 6.1 also resolve the deferred `rankLabel` casing nit** — Codeforces adapter returns lowercase but the fallback string is title-case (see Pending item #1 below).
+   then continue from **Task 6.1** in the plan (`src/app/(app)/_components/HandleCard.tsx` — pure presentational component for a handle card; props include `platform`, `handle`, `alias`, `displayName`, `currentRating`, `maxRating`, `rankLabel`, `rankColor`, `fetchStatus`, `lastContests[]`; renders a styled `<Link href={...}>` with platform label, alias-or-displayName-or-handle, current/max rating + rankLabel, and last 3 contest deltas). Plan section starts at line 2036 of `docs/superpowers/plans/2026-04-29-ps-hub-mvp.md`. (rankLabel casing nit was resolved separately ahead of Phase 6 — adapter now Title-Cases.)
 
 4. **Pattern to repeat for every remaining task:** see "Workflow protocol" above. Do not skip the spec review or push step.
 

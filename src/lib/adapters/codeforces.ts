@@ -32,6 +32,10 @@ const rankColor: Record<string, string> = {
   "legendary grandmaster": "#FF0000",
 };
 
+function toTitleCase(s: string): string {
+  return s.split(" ").map((w) => (w ? w[0]!.toUpperCase() + w.slice(1) : w)).join(" ");
+}
+
 async function getJson(url: string): Promise<unknown> {
   const r = await fetch(url, { cache: "no-store" });
   if (r.status >= 500) throw new Error(`upstream ${r.status}`);
@@ -62,7 +66,7 @@ async function doFetch(handle: string): Promise<NormalizedProfile | NotFound> {
     displayName: info.handle,
     currentRating: info.rating,
     maxRating: info.maxRating,
-    rankLabel: info.rank ?? "Newbie",
+    rankLabel: toTitleCase(rank),
     rankColor: rankColor[rank] ?? "#808080",
     lastContests: last,
   };

@@ -23,6 +23,8 @@ describe("codeforcesAdapter.fetch", () => {
       lastContests: expect.any(Array),
     });
     expect((result as any).lastContests.length).toBeLessThanOrEqual(3);
+    // CF API returns rank in lowercase ("legendary grandmaster"); adapter normalizes to Title Case to match spec.
+    expect((result as any).rankLabel).toBe("Legendary Grandmaster");
   });
 
   it("returns NotFound when CF responds with FAILED + handles not found", async () => {
