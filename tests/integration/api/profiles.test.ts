@@ -62,4 +62,19 @@ describe("GET /api/profiles/[platform]/[handle]", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  it("returns 500 when adapter throws and no prior cache exists", async () => {
+    adapterMock.fetch.mockRejectedValueOnce(new Error("upstream down"));
+    const req = new Request("http://x/api/profiles/codeforces/newhandle");
+    const res = await GET(req, { params: Promise.resolve({ platform: "codeforces", handle: "newhandle" }) });
+    expect(res.status).toBe(500);
+  });
+
+  it("?force=true is treated the same as ?force=1", async () => {
+    adapterMock.fetch.mockResolvedValue(sample);
+    const url = "http://x/api/profiles/codeforces/tourist?force=true";
+    const params = { params: Promise.resolve({ platform: "codeforces", handle: "tourist" }) };
+    expect((await GET(new Request(url), params)).status).toBe(200);
+    expect((await GET(new Request(url), params)).status).toBe(429);
+  });
 });

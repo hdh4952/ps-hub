@@ -20,13 +20,17 @@ export const GET = withAuth<Ctx>(async (req, ctx, { userId }) => {
   }
 
   const { platform, handle } = parsed.data;
-  const force = new URL(req.url).searchParams.get("force") === "1";
+  const forceParam = new URL(req.url).searchParams.get("force");
+  const force = forceParam === "1" || forceParam === "true";
   if (force && !allowForce(userId)) return json429();
 
   try {
     const row = await getProfile(platform, handle, { force });
     if (row.fetchStatus === "not_found") {
       return json422({ error: "handle_not_found", details: { platform, handle } });
+    }
+    if (row.fetchStatus === "error" && row.displayName === null) {
+      return json500({ error: "internal_error", details: { platform, handle } });
     }
     return NextResponse.json({
       platform,
@@ -40,7 +44,8 @@ export const GET = withAuth<Ctx>(async (req, ctx, { userId }) => {
       fetchedAt: row.fetchedAt,
       fetchStatus: row.fetchStatus,
     });
-  } catch {
+  } catch (err) {
+    console.error("[GET /api/profiles]", err);
     return json500();
   }
 });
