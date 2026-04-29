@@ -1,15 +1,15 @@
 # ps-hub — Progress Handoff
 
 > Read this file in a fresh session to pick up exactly where work stopped.
-> Last updated: 2026-04-29 (Phase 5 complete — all 4 tasks + entry bundle shipped, reviewed, pushed; Phase 6 UI next).
+> Last updated: 2026-04-29 (Phase 6 in progress — Task 6.1 HandleCard shipped + reviewed; Task 6.2 Dashboard server component next).
 
 ## TL;DR for the next session
 
 - ✅ **Phases 0–5 complete.** Bootstrap, DB schema, NextAuth, Codeforces+AtCoder adapters, profile-cache (TTL+SWR+force), and all four API route tasks (profiles GET, groups CRUD, favorites CRUD, IDOR coverage).
-- ✅ **Phase 5 done** — entry bundle + Tasks 5.1, 5.2, 5.3, 5.4 shipped, reviewed, fix-ups applied, pushed. `/api/profiles`, `/api/groups`, `/api/favorites` all live; IDOR contract guarded by integration test.
+- ⚙️ **Phase 6 in progress** — Task 6.1 (HandleCard pure presentational component) shipped, spec ✅, code ✅ with one fix-up (gate name color on `fetchStatus === "ok"`). Phase 5 latent withAuth typing bug surfaced and fixed during Task 6.1.
 - ✅ **Postgres provisioned** on Neon (`ap-southeast-1`). Two databases (`neondb` for app, `pshub_test` for integration tests). Both reachable; URLs in `.env.local`.
-- ✅ **`npm test` → 36/36 pass** (11 unit + 7 profile-cache integration + 6 profiles route + 5 groups + 6 favorites + 1 authz IDOR). `npx tsc --noEmit` clean. Push-after-each-task discipline maintained throughout.
-- ⏭️ **Next**: Phase 6 — Task 6.1 (HandleCard pure component, plan line ~2036), then 6.2–6.6 (Dashboard, /groups, /add, handle detail).
+- ✅ **`npm test` → 36/36 pass** (11 unit + 7 profile-cache integration + 6 profiles route + 5 groups + 6 favorites + 1 authz IDOR). `npx tsc --noEmit` **clean** (verified with `; echo $?` since `| tail` masks tsc's exit code — see feedback_tsc_exit_code.md memory). Push-after-each-task discipline maintained throughout.
+- ⏭️ **Next**: Task 6.2 (`src/app/(app)/dashboard/page.tsx` — server component that joins `favorites` + `cached_profiles` and renders a grid of HandleCards; plan line ~2123). Then 6.3 (DashboardClient + React Query refresh), 6.4 /groups, 6.5 /add, 6.6 handle detail page (replaces stub).
 - 🟡 **Open notes**: OAuth/`NEXTAUTH_SECRET` still placeholders (only blocks `npm run dev` in browser, not tests); Neon DB password should be rotated since it was shared in chat during setup; `isUniqueViolation` duplicated in 2 route files (extract on next caller).
 
 ## What this project is
@@ -163,13 +163,23 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 10. **profile-cache.test.ts switched from `afterEach` to `beforeEach` truncate (Task 5.3 review fix-up).** Latent bug surfaced when favorites tests started writing more cache rows: profile-cache.test.ts's first test inherited leftover state from the previous integration file. Now every integration test file uses `beforeEach` truncate, guaranteeing each test starts from a clean DB regardless of file order.
 11. **Task 5.4 plan-verbatim glue augmented to match repo conventions.** Plan-verbatim test omitted (a) `vi.doMock("@/lib/db/client", () => ({ db: testDb.db, sql: testDb.sql }))` inside `beforeAll` — without this the route would query production `DATABASE_URL`; (b) `afterAll(() => testDb.sql.end())`; (c) `_resetForTest()` for the favorite-add rate limiter inside `beforeEach`; (d) `{} as never` second arg to POST to satisfy `withAuth`'s `(req, ctx)` signature. All four mirror the established `tests/integration/api/favorites.test.ts` pattern. Spec compliance review confirmed these are pre-authorized, code quality review APPROVED with no Critical/Important issues.
 
-### Phase 6 — UI ⏳ NOT STARTED
-- 6.1 HandleCard pure component
-- 6.2 Dashboard server component
-- 6.3 DashboardClient + React Query refresh
-- 6.4 /groups page
-- 6.5 /add favorite flow
-- 6.6 Handle detail page
+### Phase 6 — UI ⚙️ IN PROGRESS
+
+| Task | Commit | Status |
+|---|---|---|
+| 6.1 HandleCard pure presentational component (`src/app/(app)/_components/HandleCard.tsx`) + one-line typedRoutes stub at `src/app/(app)/handles/[platform]/[handle]/page.tsx` (Phase 2.3 precedent — Task 6.6 will replace) | `4c04c10` | ✅ |
+| Phase 5 latent withAuth typing fix surfaced during Task 6.1 (`DefaultRouteCtx.params` was `?` optional but Next 15 generated route types require non-optional `Promise<any>`; collection routes GET/POST in `favorites/route.ts` and `groups/route.ts` failed `.next/types/...` typecheck once `next build` ran) | `b0bdc13` | ✅ |
+| 6.1 review fix-up (gate name color on `fetchStatus === "ok"` — stale rankColor was leaking onto displayName text over red-50/amber-50 status backgrounds; computed `nameColor` once at component top, applied to both name and rating value) | `6e96db2` | ✅ |
+| 6.2 Dashboard server component | — | ⏳ NEXT |
+| 6.3 DashboardClient + React Query refresh | — | ⏳ |
+| 6.4 /groups page (replaces Phase 2.3 stub) | — | ⏳ |
+| 6.5 /add favorite flow (replaces Phase 2.3 stub) | — | ⏳ |
+| 6.6 Handle detail page (replaces Task 6.1 stub) | — | ⏳ |
+
+**Notable deviations / decisions in Phase 6 so far:**
+1. **Pre-authorized typedRoutes stub at `src/app/(app)/handles/[platform]/[handle]/page.tsx`.** HandleCard renders `<Link href={`/handles/${p.platform}/${p.handle}`}>`. With `experimental.typedRoutes: true`, Next requires the route segment to exist in the file system. Added a one-line `export default function HandleDetailPage() { return null; }` matching the Phase 2.3 pattern (`/groups`, `/add` stubs). Task 6.6 replaces it with the real handle detail page.
+2. **Latent Phase 5 typecheck failure was masked by `tsc | tail` for several commits.** `npx --no-install tsc --noEmit 2>&1 | tail -10` reports tail's exit code, not tsc's. While `.next/types/` was empty (no prior `next build`), the include glob matched nothing and tsc passed vacuously. The implementer ran `next build` to satisfy typedRoutes during Task 6.1, populating `.next/types/app/api/{favorites,groups}/route.ts`, which exposed `withAuth`'s `DefaultRouteCtx.params?: Promise<...>` as incompatible with Next 15's generated `RouteContext` (`params: Promise<any>`, non-optional). Fixed by removing the `?` in `b0bdc13`. Going forward, verify tsc with `; echo "EXIT=$?"` or `${PIPESTATUS[0]}` — saved as `feedback_tsc_exit_code.md` memory.
+3. **Task 6.1 reviewer's three Minor items deferred to backlog** (see Pending non-task items below): empty-string alias normalization at API layer; `key={c.date}` vs unique-suffix key; discriminated-union refactor of `HandleCardProps` to eliminate the `?? 0` fallback dead-defense.
 
 ### Phase 7 — E2E + CI ⏳ NOT STARTED
 - 7.1 Playwright happy-path scenario (with adapter intercept)
@@ -184,6 +194,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    - `isUniqueViolation` helper duplicated across `groups/route.ts` and `favorites/route.ts`. Extract to `src/lib/db/errors.ts` (or similar) when a third caller appears.
    - `id` field in POST `/api/favorites` 201 response duplicates `favorite.id`. Drop `id` and rely on `favorite.id` next time the response shape is touched.
    - **Task 5.4 authz scaffold hardening** (pick up when adding PATCH-IDOR / groups-IDOR cases): assert `expect(c.status).toBe(201)` after the userB POST in `tests/integration/api/authz.test.ts` to localize failures; add `adapterMock.fetch.mockReset()` in `beforeEach` (matches `favorites.test.ts:23`) so future `mockResolvedValueOnce` queues don't leak between tests; consider a one-line comment about the mutable `currentUser` closure not being safe under `Promise.all` across user contexts.
+   - **Task 6.1 HandleCard backlog** (pick up alongside Task 6.2 when real prop shape stabilizes): empty-string `alias` would render an empty name div since `??` doesn't coalesce `""` — confirm alias normalization at favorites API layer, then either tighten validation server-side or change the fallback to `(p.alias || null) ?? p.displayName ?? p.handle`; `key={c.date}` collision is unlikely given ms-precision adapters but switch to composite key only if a real collision surfaces; consider a discriminated-union refactor of `HandleCardProps` (`{ fetchStatus: "ok"; currentRating: number; ... } | { fetchStatus: "not_found" } | { fetchStatus: "error" }`) which would eliminate both the `?? 0` rating fallback and any future risk of color/state leak by construction.
 
 2. **`.env.local` OAuth + auth secrets** — `DATABASE_URL` is real (Neon). `GOOGLE_CLIENT_ID/SECRET` and `NEXTAUTH_SECRET` are still `xxx` placeholders. Required before `npm run dev` succeeds in a browser; not blocking for unit tests or DB integration tests. Generate `NEXTAUTH_SECRET` via `openssl rand -base64 32`; OAuth creds via Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application, redirect `http://localhost:3000/api/auth/callback/google`).
 
@@ -201,7 +212,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    ```bash
    git status                  # should be clean (only `.omc/`, `docs/`, modified `next-env.d.ts` are untracked/uncommitted noise)
    git log --oneline -10       # head should be the most recent `docs: progress.md — …` commit; cross-check the SHA against the Phase status table above
-   npm run typecheck           # PASS
+   npx --no-install tsc --noEmit; echo "EXIT=$?"   # MUST be EXIT=0 — DO NOT pipe tsc through `tail` since that masks tsc's real exit code (see feedback_tsc_exit_code.md)
    npm test                    # 36 tests PASS (11 unit + 7 profile-cache integration + 6 profiles route + 5 groups route + 6 favorites route + 1 authz IDOR)
    git remote -v               # origin = https://github.com/hdh4952/ps-hub.git
    # Both Postgres DBs reachable on Neon (URLs listed in `.env.local`, gitignored):
@@ -215,7 +226,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    ```
    /superpowers:subagent-driven-development
    ```
-   then continue from **Task 6.1** in the plan (`src/app/(app)/_components/HandleCard.tsx` — pure presentational component for a handle card; props include `platform`, `handle`, `alias`, `displayName`, `currentRating`, `maxRating`, `rankLabel`, `rankColor`, `fetchStatus`, `lastContests[]`; renders a styled `<Link href={...}>` with platform label, alias-or-displayName-or-handle, current/max rating + rankLabel, and last 3 contest deltas). Plan section starts at line 2036 of `docs/superpowers/plans/2026-04-29-ps-hub-mvp.md`. (rankLabel casing nit was resolved separately ahead of Phase 6 — adapter now Title-Cases.)
+   then continue from **Task 6.2** in the plan (`src/app/(app)/dashboard/page.tsx` — server component that replaces the Phase 2.3 stub; uses `requireSession()`, joins `favorites` LEFT JOIN `cached_profiles` on `(platform, handleLc)`, renders a grid of `HandleCard` components and wires `DashboardClient` for refresh). Plan section starts at line ~2123 of `docs/superpowers/plans/2026-04-29-ps-hub-mvp.md`. Task 6.3 (DashboardClient + React Query) follows.
 
 4. **Pattern to repeat for every remaining task:** see "Workflow protocol" above. Do not skip the spec review or push step.
 
