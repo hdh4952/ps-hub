@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { auth, signOut } from "@/lib/auth";
+import { requireSession } from "@/lib/api/session";
+import { signOut } from "@/lib/auth";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  if (!session?.user) redirect("/login");
+  const session = await requireSession();
+  if (!session) redirect("/login");
 
   return (
     <div className="min-h-screen flex flex-col">

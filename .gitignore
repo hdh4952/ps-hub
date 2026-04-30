@@ -3,8 +3,10 @@ node_modules
 .env
 .env*.local
 .superpowers/
+.claude/
 coverage
 playwright-report
 test-results
+playwright/.cache/
 .DS_Store
 *.tsbuildinfo
