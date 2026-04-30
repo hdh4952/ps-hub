@@ -3,7 +3,7 @@ import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { HandleCard, HandleCardProps } from "./HandleCard";
 
-type Item = HandleCardProps & { id: string; fetchedAt: string | null };
+type Item = HandleCardProps & { id: string; fetchedAt: string | null; createdAt: string };
 
 const TTL_MS = 10 * 60 * 1000;
 
@@ -16,19 +16,19 @@ export function DashboardClient({ initial }: { initial: Item[] }) {
     return [...base].sort((a, b) => {
       if (sort === "rating") return (b.currentRating ?? 0) - (a.currentRating ?? 0);
       if (sort === "name") return (a.alias ?? a.handle).localeCompare(b.alias ?? b.handle);
-      return 0;
+      return b.createdAt.localeCompare(a.createdAt); // "added" — newest first
     });
   }, [initial, platform, sort]);
 
   return (
     <div>
       <div className="flex flex-wrap gap-3 mb-4">
-        <select value={platform} onChange={(e) => setPlatform(e.target.value as any)} className="border rounded px-2 py-1 text-sm">
+        <select aria-label="Filter by platform" value={platform} onChange={(e) => setPlatform(e.target.value as "all" | "atcoder" | "codeforces")} className="border rounded px-2 py-1 text-sm">
           <option value="all">All</option>
           <option value="atcoder">AtCoder</option>
           <option value="codeforces">Codeforces</option>
         </select>
-        <select value={sort} onChange={(e) => setSort(e.target.value as any)} className="border rounded px-2 py-1 text-sm">
+        <select aria-label="Sort by" value={sort} onChange={(e) => setSort(e.target.value as "rating" | "name" | "added")} className="border rounded px-2 py-1 text-sm">
           <option value="rating">Rating ↓</option>
           <option value="name">Name</option>
           <option value="added">Added</option>

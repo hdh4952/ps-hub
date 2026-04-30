@@ -17,6 +17,7 @@ export default async function DashboardPage() {
       handle: favorites.handle,
       handleLc: favorites.handleLc,
       alias: favorites.alias,
+      createdAt: favorites.createdAt,
       displayName: cachedProfiles.displayName,
       currentRating: cachedProfiles.currentRating,
       maxRating: cachedProfiles.maxRating,
@@ -39,8 +40,10 @@ export default async function DashboardPage() {
       alias: r.alias, displayName: r.displayName, currentRating: r.currentRating,
       maxRating: r.maxRating, rankLabel: r.rankLabel, rankColor: r.rankColor,
       lastContests: (r.lastContests as any[]) ?? [],
-      fetchStatus: (r.fetchStatus as any) ?? "ok",
+      // Default to "error" (not "ok") when no cache row yet — HandleCard then renders the amber "retrying…" state until SWR populates real data, instead of misleading "0 / max 0 · null".
+      fetchStatus: (r.fetchStatus as any) ?? "error",
       fetchedAt: r.fetchedAt?.toISOString() ?? null,
+      createdAt: r.createdAt.toISOString(),
     }))} />
   );
 }
