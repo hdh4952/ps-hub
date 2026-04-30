@@ -12,6 +12,29 @@
 - ⏭️ **Next**: Phase 7 — Task 7.1 Playwright happy-path e2e (with adapter fetch intercept; introduces `E2E_TEST=1` session bypass in `src/lib/api/session.ts`; plan section starts ~line 2580). Then Task 7.2 GitHub Actions CI workflow. After Phase 7 finishes: dispatch a final whole-tree code reviewer, then run `superpowers:finishing-a-development-branch`.
 - 🟡 **Open notes**: OAuth/`NEXTAUTH_SECRET` still placeholders (only blocks `npm run dev` in browser, not tests); Neon DB password should be rotated since it was shared in chat during setup; `isUniqueViolation` duplicated in 2 route files (extract on next caller); `as any` casts on `lastContests`/`fetchStatus` in `dashboard/page.tsx` deferred backlog.
 
+## This session's commits (2026-05-01) — Phase 6 close-out
+
+12 commits landed on `main`, all pushed to `origin/main` per project's push-after-each-task discipline. Listed newest → oldest. HEAD is `30d87dd`.
+
+| SHA | Message | Lane |
+|---|---|---|
+| `30d87dd` | docs: progress.md — Task 6.6 done + Phase 6 ✅ COMPLETE; Phase 7 (e2e + CI) next | docs |
+| `0508522` | chore: address Task 6.6 review (gate name color + surface error fetchStatus) | 6.6 fix-up |
+| `9043f31` | feat(ui): handle detail page | 6.6 |
+| `18ef42b` | docs: progress.md — Task 6.5 done (with form network catch + PATCH failure surface fix-up); Task 6.6 next | docs |
+| `79343cf` | chore: address Task 6.5 review (form network catch + PATCH failure surface) | 6.5 fix-up |
+| `88e4206` | feat(ui): /add favorite flow | 6.5 |
+| `bdb8149` | docs: progress.md — Task 6.4 done (with form/delete error-handling fix-up); Task 6.5 next | docs |
+| `38a4131` | chore: address Task 6.4 review (form + delete error handling) | 6.4 fix-up |
+| `ffef053` | feat(ui): /groups CRUD page | 6.4 |
+| `0745e82` | docs: progress.md — Tasks 6.2/6.3 done (with polish + review fix-ups); Task 6.4 next | docs |
+| `9655d07` | chore: address Task 6.2/6.3 review (hydration safety + SWR error surface) | 6.2/6.3 fix-up |
+| `342f8a5` | chore(ui): dashboard polish (typed selects + active "added" sort + empty-cache fallback) | 6.2/6.3 polish |
+
+**Verification at HEAD `30d87dd`:** `npx --no-install tsc --noEmit; echo $?` → `EXIT=0`. `npm test` → `36 passed (36)` in ~27s. `git status` clean (only `.omc/` and `docs/` untracked, both intentional). `git log` head-of-line matches the table.
+
+**Phase 6 fix-up pattern (now established baseline):** every UI task shipped plan-verbatim first, then a focused fix-up commit addressed Important findings from the code-quality review. The recurring categories — silent failures (delete, PATCH, refresh), missing in-flight guards, network-error crashes, redirect-after-orphaned-state, rankColor leak onto degraded views, missing `error` fetchStatus UI surface — are the canonical gaps to look for in any future client-component touch.
+
 ## What this project is
 
 **ps-hub**: a multi-user web app where each user signs in with Google, registers their AtCoder/Codeforces handles, bookmarks other people's handles, organizes them into groups, and views a unified rating dashboard.
@@ -197,8 +220,55 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 14. **Task 6.6 nameColor gate + three-state error UI (`0508522` review fix-up)** — plan-verbatim only handled `fetchStatus === "not_found"` and applied `rankColor` unconditionally to the `<h1>` displayName + `<strong>` current rating. When `getProfile()` falls back to a stale `existing` cache row from a prior `ok` fetch on a transient upstream error, the page would render confidently-styled colored text on a degraded view — same bug class as Task 6.1's `6e96db2` HandleCard fix-up. Now: (a) `nameColor = fetchStatus === "ok" ? rankColor ?? undefined : undefined` computed once, applied to both `<h1>` and `<strong>`; (b) three-state `error` UI mirroring the `9655d07` "stale > empty" rule — `error+stale-data` (`displayName !== null || currentRating !== null`) renders an amber banner above the header (`"Couldn't refresh from {platform} — showing last cached data from {fetchedAt}"`) with neutral colors and the rest of the page intact; `error+no-data` (both null) returns a standalone amber error block before the table; `ok`/`not_found` paths unchanged.
 
 ### Phase 7 — E2E + CI ⏳ NOT STARTED
-- 7.1 Playwright happy-path scenario (with adapter intercept)
-- 7.2 GitHub Actions CI workflow
+
+| Task | Plan section | Status |
+|---|---|---|
+| 7.1 Playwright happy-path scenario (with adapter intercept) | plan ~line 2580–2698 | ⏳ NEXT |
+| 7.2 GitHub Actions CI workflow | plan ~line 2700–2757 | ⏳ |
+
+**Phase 7 entry plan (read before dispatching the 7.1 implementer):**
+
+Task 7.1 spans 6 plan steps (~120 lines):
+
+1. **Add deps**: `npm i -D @playwright/test@^1.48.2` then `npx playwright install chromium --with-deps`. Browser download is ~150 MB on Windows; takes 1–2 minutes. Note `--with-deps` is mostly a no-op on Windows (linux deps installer); harmless to pass.
+2. **`playwright.config.ts`**: trivial config; `webServer.command = "npm run dev"` auto-spawns Next dev server with `env: { ...process.env, E2E_TEST: "1" }`. `reuseExistingServer: !process.env.CI`.
+3. **`src/lib/api/session.ts` modification (load-bearing)**: adds an `if (process.env.E2E_TEST === "1") return { userId: "e2e-user", user: { id: "e2e-user", email: "e2e@x" } }` early-return at the top. **Every page and API route in the app calls `requireSession()`**, so this branch silently authenticates the entire app for the e2e run. The plan also says to verify `src/app/(app)/layout.tsx` still works (it calls `requireSession()` and redirects on null — the bypass returns a non-null session, so layout naturally passes; no separate edit strictly required). Spec reviewer should catch any plan deviation here.
+4. **`tests/e2e/_seed.ts`**: opens a postgres connection to `DATABASE_URL` (the **main** DB, not `pshub_test`!) and `INSERT INTO users (id, email) VALUES ('e2e-user', 'e2e@x') ON CONFLICT DO NOTHING`. Note: this seeds the **production-pointing** DB used by `npm run dev`. On Neon's `neondb` this means a real row will land — if any teardown matters, add explicit cleanup.
+5. **`tests/e2e/happy-path.spec.ts`**: full happy-path scenario (add group → add favorite → assign to group → land on dashboard → see "tourist" card).
+
+**⚠️ Critical Phase 7 entry concern — adapter intercept gotcha:**
+
+The plan-verbatim spec uses `await context.route("https://codeforces.com/api/user.info*", route => route.fulfill(...))` to mock the Codeforces upstream. **This will not fire**: Playwright's `context.route()` only intercepts requests made by the **browser** (page context), but our adapters call `https://codeforces.com/api/...` server-side from the Next.js Node runtime via `getProfile()` → adapter → `fetch()`. Server-side fetches bypass the browser context entirely.
+
+When the form clicks "Add favorite", the chain is:
+- browser POSTs `/api/favorites` (✅ visible to context.route, but we don't intercept this URL)
+- Next route handler calls `getProfile("codeforces", "tourist")` server-side
+- `getProfile` cache-misses (first run) → calls codeforces adapter
+- adapter does `fetch("https://codeforces.com/api/user.info?...")` from Node — **not intercepted**
+- real Codeforces API call fires; the test depends on Codeforces being up + tourist's actual rating
+
+**Recommended fix-ups for the 7.1 reviewer / implementer to address (codify as a Phase 7 deviation):**
+- **Easiest**: pre-seed the `cached_profiles` table in `_seed.ts` with a `tourist` / `codeforces` row at `fetchStatus: "ok"`, recent `fetchedAt` (so it doesn't trigger SWR refresh), and the fixture rating data. Then `getProfile()` cache-hits and never calls the adapter. The form's POST `/api/favorites` calls `getProfile()` for handle validation, which now hits the cache — no upstream call. The dashboard's SSR + SWR refresh also hits the cache. Test becomes hermetic.
+- **Alternative**: install `msw/node` and set up a Node-side mock server in a Playwright global setup. Heavier but more reusable.
+- **Don't keep the `context.route` intercept as-is** — it's misleading dead code that gives false safety.
+
+The plan's adapter intercept pattern works in projects where adapters live in client components (e.g., direct browser fetch), but ps-hub's adapters are intentionally server-only per spec §4 ("server-only externals"). This is a real plan/architecture mismatch; a deviation note in progress.md after 7.1 ships will document the chosen workaround.
+
+**Other Task 7.1 things to watch:**
+- Adapter URLs are pattern-matched: `user.info*` and `user.rating*` — make sure your fix-up covers both endpoints (`getProfile` calls both via the adapter).
+- AtCoder adapter not exercised in the plan's happy-path (only Codeforces). Backlog: add an AtCoder leg if cross-platform coverage matters.
+- `npm run e2e` script doesn't exist yet in `package.json` — add `"e2e": "playwright test"` (or whatever you settle on); the plan implies but doesn't show it.
+- `package.json` `scripts` section also missing `db:check` (referenced in 7.2 CI workflow); add `"db:check": "drizzle-kit check"` for CI.
+- `.gitignore` should add `playwright-report/`, `test-results/`, and `playwright/.cache/` entries (plan mentions `.gitignore` modification but doesn't show contents).
+
+Task 7.2 is a single ~50-line GitHub Actions workflow. Notable items:
+- Uses postgres:16 service container (no Neon dependency in CI). Two databases: `pshub` (main) + `pshub_test`. The workflow creates `pshub_test` via `psql` then runs `npm run db:migrate` against both via `DATABASE_URL` env override.
+- Sets `E2E_TEST=1` at workflow level — applies to ALL test invocations, not just e2e. Fine for ps-hub since unit/integration tests don't depend on real session, but spec/code reviewers should confirm.
+- Runs `typecheck`, `test`, then `e2e` sequentially. Fail-fast.
+
+**Pre-flight before dispatching 7.1 implementer:**
+- Confirm Neon's `neondb` is OK to receive a real `e2e-user` row (the seed script inserts; current credential is in `.env.local`).
+- Decide cache-pre-seed vs MSW vs status-quo plan-verbatim — recommend the implementer pick cache-pre-seed and document the deviation. Or, if you prefer a strictly plan-faithful first pass, ship 7.1 plan-verbatim, watch the test fail because Codeforces returns different data than the fixture, then fix-up. (Probably faster to fold it in upfront.)
 
 ## Pending non-task items
 
@@ -211,6 +281,10 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    - **Task 5.4 authz scaffold hardening** (pick up when adding PATCH-IDOR / groups-IDOR cases): assert `expect(c.status).toBe(201)` after the userB POST in `tests/integration/api/authz.test.ts` to localize failures; add `adapterMock.fetch.mockReset()` in `beforeEach` (matches `favorites.test.ts:23`) so future `mockResolvedValueOnce` queues don't leak between tests; consider a one-line comment about the mutable `currentUser` closure not being safe under `Promise.all` across user contexts.
    - **Task 6.1 HandleCard backlog** (pick up alongside Task 6.2 when real prop shape stabilizes): empty-string `alias` would render an empty name div since `??` doesn't coalesce `""` — confirm alias normalization at favorites API layer, then either tighten validation server-side or change the fallback to `(p.alias || null) ?? p.displayName ?? p.handle`; `key={c.date}` collision is unlikely given ms-precision adapters but switch to composite key only if a real collision surfaces; consider a discriminated-union refactor of `HandleCardProps` (`{ fetchStatus: "ok"; currentRating: number; ... } | { fetchStatus: "not_found" } | { fetchStatus: "error" }`) which would eliminate both the `?? 0` rating fallback and any future risk of color/state leak by construction.
    - **Task 6.2/6.3 dashboard backlog** (pick up alongside the next dashboard touch): drop the two `as any` casts in `dashboard/page.tsx` (`lastContests` and `fetchStatus`) — fold into the discriminated-union HandleCardProps refactor above, since both casts exist because the DB column types are wider than the prop union; consider extracting a `toItem(row)` helper in `page.tsx` so the JSX shrinks to `<DashboardClient initial={rows.map(toItem)} />`; consider a `PLATFORM_FILTERS = [...] as const` + derived type to dedupe the `"all" | "atcoder" | "codeforces"` and `"rating" | "name" | "added"` literal unions repeated four times each in `DashboardClient.tsx`; thread the API's structured error code (currently dropped via `throw new Error(String(r.status))` on line 53) through to the UI when finer error states matter; current sort tiebreaker for unrated AtCoder handles ranks them alongside rating-0 — UX nit, swap to `(b.currentRating ?? -Infinity) - (a.currentRating ?? -Infinity)` if it bites.
+   - **Task 6.4 GroupForm/GroupList backlog** (pick up alongside the next groups touch): empty-string `g.name` would render an empty `<li>` row since `g.name` is rendered raw — confirm name normalization at `/api/groups` POST (currently zod-validated but worth re-checking minimum length); `<label>` siblings to `<select>`/`<input>` in `GroupForm` lack `htmlFor`/`id` (a11y, screen-reader association); error codes (`name_exists`, `invalid_body`, etc.) surface raw to user — backlog `errorCodeToMessage()` helper for humanization once a third form lands.
+   - **Task 6.5 AddFavoriteForm backlog**: same `errorCodeToMessage()` helper applies; `<label>` siblings to platform select + handle input lack `htmlFor`/`id`; `body.error` from POST/PATCH `.json()` is typed `any` via implicit return — a tiny `{ error?: string }` annotation would tighten without ceremony; `getProfile()` upstream rate-limit (5s per user, see `src/lib/rate-limit/favorite-add.ts`) means rapid retries for legitimately-different handles are also throttled — backlog: switch to (handle, platform) keying if real users hit it.
+   - **Task 6.6 handle detail page backlog**: `as Array<any>` and `(c: any)` casts on `lastContests`/contests row are inline duplicates of the dashboard `as any` casts — same discriminated-union refactor of `getProfile`'s return shape would resolve both; table missing `<caption>` and `scope="col"` on `<th>` (a11y); `new Date(c.date).toLocaleDateString()` is server-locale rendered (Next server component) so technically fine, but if the page is ever client-hydrated, locale skew appears; `rankLabel` rendered raw with no "rank" prefix word — for AtCoder values like "1200" reads ambiguously beside "Max 1500"; no SWR refresh since this is a single-card view (intentional vs dashboard's grid; but if a user lands here from a stale dashboard link, they may want a manual refresh button — backlog).
+   - **Phase 7 entry concern (carry into 7.1 implementer brief)**: see "Phase 7 entry plan" section above for the SSR-side adapter intercept gotcha and recommended cache-pre-seed workaround. Don't dispatch the 7.1 implementer with plan-verbatim text alone — fold the cache-pre-seed deviation into the prompt or be ready to fix-up.
 
 2. **`.env.local` OAuth + auth secrets** — `DATABASE_URL` is real (Neon). `GOOGLE_CLIENT_ID/SECRET` and `NEXTAUTH_SECRET` are still `xxx` placeholders. Required before `npm run dev` succeeds in a browser; not blocking for unit tests or DB integration tests. Generate `NEXTAUTH_SECRET` via `openssl rand -base64 32`; OAuth creds via Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application, redirect `http://localhost:3000/api/auth/callback/google`).
 
