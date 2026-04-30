@@ -15,16 +15,42 @@ export function AddFavoriteForm({ groups }: { groups: Group[] }) {
     e.preventDefault();
     setError(null); setBusy(true);
     try {
-      const r = await fetch("/api/favorites", { method: "POST", body: JSON.stringify({ platform, handle }) });
-      if (!r.ok) {
-        const body = await r.json().catch(() => ({}));
-        setError(body.error ?? `error ${r.status}`);
+      let createdId: string;
+      try {
+        const r = await fetch("/api/favorites", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ platform, handle }),
+        });
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          setError(body.error ?? `error ${r.status}`);
+          return;
+        }
+        createdId = (await r.json()).id;
+      } catch {
+        setError("network_error");
         return;
       }
-      const { id } = await r.json();
+
       if (selectedGroups.length > 0) {
-        await fetch(`/api/favorites/${id}`, { method: "PATCH", body: JSON.stringify({ groupIds: selectedGroups }) });
+        try {
+          const patchRes = await fetch(`/api/favorites/${createdId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ groupIds: selectedGroups }),
+          });
+          if (!patchRes.ok) {
+            const body = await patchRes.json().catch(() => ({}));
+            setError(`favorite added; group assignment failed: ${body.error ?? `error ${patchRes.status}`}`);
+            return;
+          }
+        } catch {
+          setError("favorite added; group assignment failed: network_error");
+          return;
+        }
       }
+
       router.push("/dashboard");
     } finally { setBusy(false); }
   }
@@ -33,7 +59,7 @@ export function AddFavoriteForm({ groups }: { groups: Group[] }) {
     <form onSubmit={submit} className="space-y-4 max-w-md">
       <div>
         <label className="text-sm">Platform</label>
-        <select value={platform} onChange={(e) => setPlatform(e.target.value as any)} className="border rounded px-2 py-1 ml-2">
+        <select value={platform} onChange={(e) => setPlatform(e.target.value as "codeforces" | "atcoder")} className="border rounded px-2 py-1 ml-2">
           <option value="codeforces">Codeforces</option>
           <option value="atcoder">AtCoder</option>
         </select>
