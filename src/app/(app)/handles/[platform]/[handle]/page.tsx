@@ -15,15 +15,35 @@ export default async function HandleDetail({ params }: Props) {
   if (row.fetchStatus === "not_found") {
     return <p className="text-red-600">Handle <code>{handle}</code> not found on {platform}.</p>;
   }
+
+  // Don't apply rank color to text outside the canonical "ok" state — would otherwise leak a stale color from a prior successful fetch onto a degraded view.
+  const nameColor = row.fetchStatus === "ok" ? (row.rankColor ?? undefined) : undefined;
+
+  const isErrorWithStaleData = row.fetchStatus === "error" && (row.displayName !== null || row.currentRating !== null);
+  const isErrorWithNoData = row.fetchStatus === "error" && row.displayName === null && row.currentRating === null;
+
+  if (isErrorWithNoData) {
+    return (
+      <p className="text-amber-700 bg-amber-50 border border-amber-200 rounded p-4">
+        Couldn't fetch <code>{handle}</code> from {platform}. Please try again later.
+      </p>
+    );
+  }
+
   const last = (row.lastContests as Array<any>) ?? [];
 
   return (
     <div className="space-y-4">
+      {isErrorWithStaleData && (
+        <div className="text-amber-800 bg-amber-50 border border-amber-200 rounded p-3 text-sm">
+          Couldn't refresh from {platform} — showing last cached data{row.fetchedAt ? ` from ${new Date(row.fetchedAt).toLocaleString()}` : ""}.
+        </div>
+      )}
       <header>
         <div className="text-xs uppercase text-neutral-500">{platform}</div>
-        <h1 className="text-2xl font-semibold" style={{ color: row.rankColor ?? undefined }}>{row.displayName ?? handle}</h1>
+        <h1 className="text-2xl font-semibold" style={{ color: nameColor }}>{row.displayName ?? handle}</h1>
         <p className="text-neutral-600">
-          Current <strong style={{ color: row.rankColor ?? undefined }}>{row.currentRating ?? 0}</strong>
+          Current <strong style={{ color: nameColor }}>{row.currentRating ?? 0}</strong>
           {" · "}Max {row.maxRating ?? 0} · {row.rankLabel}
         </p>
       </header>
