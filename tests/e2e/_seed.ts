@@ -24,10 +24,17 @@ config(); // fallback to .env
 export async function seedE2EUser() {
   const sql = postgres(process.env.DATABASE_URL!);
   try {
+    // Cleanup-before-seed: makes the e2e re-runnable on a shared dev DB by
+    // clearing per-user state that the test creates (groups + favorites).
+    // FK order: favorite_groups → favorites → groups. Users/cached_profiles
+    // are intentionally upserted (FK target / global-keyed cache row).
+    await sql`DELETE FROM favorite_groups WHERE favorite_id IN (SELECT id FROM favorites WHERE user_id = 'e2e-user')`;
+    await sql`DELETE FROM favorites WHERE user_id = 'e2e-user'`;
+    await sql`DELETE FROM groups WHERE user_id = 'e2e-user'`;
     await sql`
       INSERT INTO users (id, email)
-      VALUES ('e2e-user', 'e2e@x')
-      ON CONFLICT (id) DO NOTHING
+      VALUES ('e2e-user', 'e2e@example.test')
+      ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email
     `;
     await sql`
       INSERT INTO cached_profiles

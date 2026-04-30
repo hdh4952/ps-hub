@@ -1,9 +1,8 @@
 import { auth } from "@/lib/auth";
+import { isE2E, E2E_USER } from "./e2e-bypass";
 
 export async function requireSession() {
-  if (process.env.E2E_TEST === "1") {
-    return { userId: "e2e-user", user: { id: "e2e-user", email: "e2e@x" } };
-  }
+  if (isE2E()) return E2E_USER;
   const session = await auth();
   if (!session?.user?.id) return null;
   return { userId: session.user.id, user: session.user };
