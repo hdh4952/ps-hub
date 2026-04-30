@@ -1,15 +1,15 @@
 # ps-hub — Progress Handoff
 
 > Read this file in a fresh session to pick up exactly where work stopped.
-> Last updated: 2026-05-01 (Phase 6 in progress — Tasks 6.1/6.2/6.3 shipped + reviewed; Task 6.4 /groups page next).
+> Last updated: 2026-05-01 (Phase 6 in progress — Tasks 6.1/6.2/6.3/6.4 shipped + reviewed; Task 6.5 /add favorite flow next).
 
 ## TL;DR for the next session
 
 - ✅ **Phases 0–5 complete.** Bootstrap, DB schema, NextAuth, Codeforces+AtCoder adapters, profile-cache (TTL+SWR+force), and all four API route tasks (profiles GET, groups CRUD, favorites CRUD, IDOR coverage).
-- ⚙️ **Phase 6 in progress** — Tasks 6.1 (HandleCard), 6.2 (dashboard server component, cache-first SSR), and 6.3 (DashboardClient + React Query SWR refresh) all shipped, spec ✅, code ✅. 6.2/6.3 bundled into a single commit per plan-authorized deferral, then polished + reviewed (hydration safety + SWR error surface).
+- ⚙️ **Phase 6 in progress** — Tasks 6.1 (HandleCard), 6.2 (dashboard server component, cache-first SSR), 6.3 (DashboardClient + React Query SWR refresh), and 6.4 (/groups CRUD UI) all shipped, spec ✅, code ✅. 6.2/6.3 bundled into a single commit per plan-authorized deferral, then polished + reviewed (hydration safety + SWR error surface). 6.4 review surfaced 4 Important error-handling gaps (silent DELETE, double-submit race, network-error crash, unsafe error-shape parse) — all fixed in `38a4131`.
 - ✅ **Postgres provisioned** on Neon (`ap-southeast-1`). Two databases (`neondb` for app, `pshub_test` for integration tests). Both reachable; URLs in `.env.local`.
 - ✅ **`npm test` → 36/36 pass** (11 unit + 7 profile-cache integration + 6 profiles route + 5 groups + 6 favorites + 1 authz IDOR). `npx tsc --noEmit` **clean** (verified with `; echo $?` since `| tail` masks tsc's exit code — see feedback_tsc_exit_code.md memory). Push-after-each-task discipline maintained throughout.
-- ⏭️ **Next**: Task 6.4 (`src/app/(app)/groups/page.tsx` — /groups CRUD UI, replaces Phase 2.3 stub; plan line ~2300). Then 6.5 /add, 6.6 handle detail page (replaces Task 6.1 stub).
+- ⏭️ **Next**: Task 6.5 (/add favorite flow — `src/app/(app)/add/page.tsx` replaces Phase 2.3 stub; plan section starts ~line 2397). Then 6.6 handle detail page (replaces Task 6.1 stub at `src/app/(app)/handles/[platform]/[handle]/page.tsx`).
 - 🟡 **Open notes**: OAuth/`NEXTAUTH_SECRET` still placeholders (only blocks `npm run dev` in browser, not tests); Neon DB password should be rotated since it was shared in chat during setup; `isUniqueViolation` duplicated in 2 route files (extract on next caller); `as any` casts on `lastContests`/`fetchStatus` in `dashboard/page.tsx` deferred backlog.
 
 ## What this project is
@@ -173,8 +173,9 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 | 6.2 + 6.3 bundled (cache-first SSR dashboard + React Query SWR refresh + `@tanstack/react-query` dep + `Providers` wrapper in root layout). Plan explicitly defers 6.2's commit until 6.3 implements DashboardClient. | `4cb5e37` | ✅ |
 | 6.2/6.3 polish on top before review (typed select handlers + aria-labels; "added" sort actually sorts by `createdAt` desc — was no-op `return 0`; empty-cache row defaults `fetchStatus: "error"` so HandleCard renders amber "retrying…" instead of misleading "0 / max 0 · null"; `next-env.d.ts` doc-URL refresh) | `342f8a5` | ✅ |
 | 6.2/6.3 review fix-ups (RefreshingCard defers `Date.now()` to `useEffect` to eliminate hydration mismatch when `fetchedAt` near TTL boundary; useQuery error path downgrades `fetchStatus` to `"error"` so card surfaces refresh failures instead of silently keeping stale "ok" badge; explicit `staleTime: TTL_MS` on per-card query so 10-min TTL intent is self-documenting; drop `as any` cast on `fetchStatus` prop) | `9655d07` | ✅ |
-| 6.4 /groups page (replaces Phase 2.3 stub) | — | ⏳ NEXT |
-| 6.5 /add favorite flow (replaces Phase 2.3 stub) | — | ⏳ |
+| 6.4 /groups CRUD UI (`groups/page.tsx` server component, `GroupForm.tsx` POST + `GroupList.tsx` DELETE; replaces Phase 2.3 stub) | `ffef053` | ✅ |
+| 6.4 review fix-ups (GroupForm: in-flight guard + `disabled={submitting}` to block double-submit `name_exists` race; try/catch around fetch + nested try/catch around `.json()` so network failures and non-JSON 5xx bodies surface as `network_error` instead of crashing the error boundary; explicit `Content-Type: application/json` header. GroupList: extract `DeleteButton` sub-component with own in-flight + per-row error state; check `res.ok` before `r.refresh()` so rejected deletes surface inline next to the row instead of silently leaving stale UI) | `38a4131` | ✅ |
+| 6.5 /add favorite flow (replaces Phase 2.3 stub) | — | ⏳ NEXT |
 | 6.6 Handle detail page (replaces Task 6.1 stub) | — | ⏳ |
 
 **Notable deviations / decisions in Phase 6 so far:**
@@ -187,6 +188,8 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 7. **Hydration-safe `RefreshingCard` (`9655d07` review fix-up)** — plan-verbatim computed `isStale` inline via `Date.now()` in render, which SSR runs server-side and the client re-runs on hydration. Near-TTL `fetchedAt` would flip `enabled` between server and client and cause a hydration mismatch on the `useQuery` subtree. Now: `useState<number | null>(null)` initial → `useEffect(() => setNow(Date.now()), [])` post-mount → `isStale` derived. SSR renders with query disabled; client mounts and re-evaluates. Picks up the previously-unused `useEffect` import the plan-verbatim text included.
 8. **SWR error path now surfaces in UI (`9655d07`)** — plan-verbatim swallowed `q.isError`: `data` fell back to `item`, and `fetchStatus` kept the SSR row's "ok" badge. Now `q.isError → fetchStatus = "error"` so HandleCard renders the amber "retrying…" state. Pairs with the empty-cache fallback (deviation #6) to make every non-OK state user-visible.
 9. **Explicit `staleTime: TTL_MS` on per-card `useQuery` (`9655d07`)** — global Provider `staleTime: 60_000` was already in place, but `RefreshingCard` independently gates by 10-minute TTL via `enabled: isStale`. Setting `staleTime` per-query makes the 10-min intent self-documenting and immune to provider drift. Also dropped the now-unnecessary `as any` cast on the `fetchStatus` prop (replaced with a single `as HandleCardProps["fetchStatus"]`).
+10. **`DeleteButton` sub-component extraction in `GroupList.tsx` (`38a4131` review fix-up)** — plan-verbatim inlined the DELETE `onClick` directly on the row's button, with no `res.ok` check, no in-flight guard, and no error surface. Failed deletes (auth expiry, 404, network) silently left the row with no feedback, and rapid double-clicks fired duplicate requests. Now: `DeleteButton` is its own client sub-component (still in the same file, no separate export beyond `GroupList`) holding its own `submitting` and `err: string | null` state; renders inline error span next to the button on failure. Pattern will likely repeat in Tasks 6.5 (/add favorite) and 6.6 (handle detail).
+11. **`GroupForm.tsx` defensive error handling (`38a4131` review fix-up)** — plan-verbatim had no in-flight guard (double-submit raced into a confusing `name_exists` after a successful create), no try/catch around fetch (network failures bubbled to React's error boundary), and a bare `(await res.json()).error` (non-JSON 5xx bodies threw on `.json()`). Now: `submitting` boolean state + `disabled={submitting}` on Add button + early return; outer try/catch surfaces network failures as `setErr("network_error")`; nested try/catch around `.json()` falls back to `res.statusText`; explicit `Content-Type: application/json` header folded in (was the spec/code reviewer's acknowledged Minor item).
 
 ### Phase 7 — E2E + CI ⏳ NOT STARTED
 - 7.1 Playwright happy-path scenario (with adapter intercept)
@@ -234,7 +237,7 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
    ```
    /superpowers:subagent-driven-development
    ```
-   then continue from **Task 6.4** in the plan (`src/app/(app)/groups/page.tsx` — /groups CRUD UI that replaces the Phase 2.3 stub; uses the existing `/api/groups` collection + member endpoints from Task 5.2; should support listing, create, rename, delete). Plan section starts at line ~2300 of `docs/superpowers/plans/2026-04-29-ps-hub-mvp.md`. Tasks 6.5 (/add favorite flow) and 6.6 (handle detail page, replaces Task 6.1 stub) follow.
+   then continue from **Task 6.5** in the plan (`src/app/(app)/add/page.tsx` — /add favorite flow that replaces the Phase 2.3 stub; uses the existing `POST /api/favorites` endpoint from Task 5.3 with handle validation via `getProfile()` upstream rate-limit). Plan section starts at line ~2397 of `docs/superpowers/plans/2026-04-29-ps-hub-mvp.md`. Task 6.6 (handle detail page, replaces Task 6.1 stub at `src/app/(app)/handles/[platform]/[handle]/page.tsx`) follows. Then Phase 7 (E2E + CI).
 
 4. **Pattern to repeat for every remaining task:** see "Workflow protocol" above. Do not skip the spec review or push step.
 
