@@ -43,7 +43,9 @@ export function DashboardClient({ initial }: { initial: Item[] }) {
 }
 
 function RefreshingCard({ item }: { item: Item }) {
-  const isStale = !item.fetchedAt || Date.now() - new Date(item.fetchedAt).getTime() > TTL_MS;
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => { setNow(Date.now()); }, []);
+  const isStale = now !== null && (!item.fetchedAt || now - new Date(item.fetchedAt).getTime() > TTL_MS);
   const q = useQuery({
     queryKey: ["profile", item.platform, item.handle],
     queryFn: async () => {
@@ -52,8 +54,10 @@ function RefreshingCard({ item }: { item: Item }) {
       return r.json();
     },
     enabled: isStale,
+    staleTime: TTL_MS,
     initialData: undefined,
   });
   const data = q.data ?? item;
-  return <HandleCard {...item} {...data} fetchStatus={(data?.fetchStatus ?? item.fetchStatus) as any} />;
+  const fetchStatus = q.isError ? "error" : (data?.fetchStatus ?? item.fetchStatus);
+  return <HandleCard {...item} {...data} fetchStatus={fetchStatus as HandleCardProps["fetchStatus"]} />;
 }
