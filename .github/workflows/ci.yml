@@ -1,0 +1,39 @@
+name: ci
+on: { push: { branches: [main] }, pull_request: {} }
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        ports: ["5432:5432"]
+        env: { POSTGRES_PASSWORD: pass, POSTGRES_DB: pshub }
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:pass@localhost:5432/pshub
+      TEST_DATABASE_URL: postgres://postgres:pass@localhost:5432/pshub_test
+      GOOGLE_CLIENT_ID: test
+      GOOGLE_CLIENT_SECRET: test
+      NEXTAUTH_SECRET: test
+      NEXTAUTH_URL: http://localhost:3000
+      E2E_TEST: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Create test DB
+        run: psql "$DATABASE_URL" -c "CREATE DATABASE pshub_test"
+      - name: Migrate (main + test DBs)
+        run: |
+          npm run db:migrate
+          DATABASE_URL=$TEST_DATABASE_URL npm run db:migrate
+      - name: Drizzle check (no drift)
+        run: npm run db:check
+      - run: npm run typecheck
+      - run: npm test
+      - name: Install Playwright
+        run: npx playwright install chromium --with-deps
+      - run: npm run e2e
