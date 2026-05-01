@@ -1,16 +1,16 @@
 # ps-hub — Progress Handoff
 
 > Read this file in a fresh session to pick up exactly where work stopped.
-> Last updated: 2026-05-01 (Phase 7 in progress — Task 7.1 ✅ shipped + reviewed + fix-up landed; Task 7.2 GitHub Actions CI next).
+> Last updated: 2026-05-01 (Phase 7 ✅ COMPLETE — Task 7.2 GitHub Actions CI shipped plan-verbatim with no review fix-ups needed. Next: final whole-tree code review + `superpowers:finishing-a-development-branch`).
 
 ## TL;DR for the next session
 
-- ✅ **Phases 0–6 complete + Task 7.1 (Playwright happy-path e2e) done.** Bootstrap, DB schema, NextAuth, Codeforces+AtCoder adapters, profile-cache (TTL+SWR+force), four API route tasks, all six UI tasks, and now a single-scenario Playwright happy-path e2e (create group → add favorite → land on dashboard) with the `E2E_TEST=1` session-bypass branch wired through `requireSession()` + middleware.
-- 🎯 **Phase 6 pattern (now established)**: plan-verbatim implementation lands first; spec review confirms compliance; code-quality review surfaces UI error-handling gaps (silent failures, missing in-flight guards, network-error crashes, redirect-after-orphaned-state, rankColor leak onto degraded views, missing error-fetchStatus UI surface); fix-up commit applies them. The six UI fix-ups (`6e96db2`, `342f8a5`, `9655d07`, `38a4131`, `79343cf`, `0508522`) collectively establish the project's UI error-handling baseline. **Task 7.1 followed the same pattern** — plan-verbatim ship at `d4ae9ec`, then a `82d201b` fix-up addressed prod-leak guardrail + seed re-runnability + middleware type-cast + selector ambiguity.
-- ✅ **Postgres provisioned** on Neon (`ap-southeast-1`). Two databases (`neondb` for app, `pshub_test` for integration tests). Both reachable; URLs in `.env.local`. **Note**: e2e currently writes to `neondb` (the `webServer` runs `npm run dev`, which uses `DATABASE_URL`); seed cleans `favorites`/`groups`/`favorite_groups` for `e2e-user` before each run so re-runs are idempotent.
+- ✅ **All 7 phases complete.** Bootstrap, DB schema, NextAuth, Codeforces+AtCoder adapters, profile-cache (TTL+SWR+force), four API route tasks, all six UI tasks, single-scenario Playwright happy-path e2e (`d4ae9ec`+`82d201b`), and now GitHub Actions CI (`2226e83`) — postgres:16 service container, dual-DB migrate (`pshub` + `pshub_test`), `drizzle-kit check` for schema-drift, typecheck, `npm test`, Playwright install + e2e, all gated on push-to-main and pull_request.
+- 🎯 **Phase 6/7.1 pattern (established) DID NOT REPEAT for 7.2**: plan-verbatim ship at `2226e83` was approved by code-quality review with **zero Critical / zero Important** issues. The 4 reviewer observations (no failure-artifact upload, no `concurrency:` group, action `@v4` tag-pinning vs SHA, eventual `${{ secrets.* }}` migration when non-E2E jobs land) were explicitly deferred to a separate future "CI hardening" PR rather than retroactively folded — preserves the spec-compliance audit trail. **No 7.2 fix-up commit exists.**
+- ✅ **Postgres provisioned** on Neon (`ap-southeast-1`). Two databases (`neondb` for app, `pshub_test` for integration tests). Both reachable; URLs in `.env.local`. CI uses its own `postgres:16` service container with `pshub` + `pshub_test`, fully decoupled from Neon. **Note**: local e2e currently writes to `neondb` (the `webServer` runs `npm run dev`, which uses `DATABASE_URL`); seed cleans `favorites`/`groups`/`favorite_groups` for `e2e-user` before each run so re-runs are idempotent.
 - ✅ **`npm test` → 36/36 pass** (11 unit + 7 profile-cache integration + 6 profiles route + 5 groups + 6 favorites + 1 authz IDOR). **`npm run e2e` → 1/1 pass** (~15s). `npx tsc --noEmit` **clean** (verified with `; echo $?` since `| tail` masks tsc's exit code — see feedback_tsc_exit_code.md memory). Push-after-each-task discipline maintained throughout.
-- ⏭️ **Next**: Phase 7 — Task 7.2 GitHub Actions CI workflow (postgres:16 service container + dual-DB migrate + drizzle-kit check + typecheck + npm test + Playwright e2e). Plan section starts ~line 2700. After Phase 7 finishes: dispatch a final whole-tree code reviewer, then run `superpowers:finishing-a-development-branch`.
-- 🟡 **Open notes**: OAuth/`NEXTAUTH_SECRET` still placeholders (only blocks `npm run dev` in browser, not tests); Neon DB password should be rotated since it was shared in chat during setup; `isUniqueViolation` duplicated in 2 route files (extract on next caller); `as any` casts on `lastContests`/`fetchStatus` in `dashboard/page.tsx` deferred backlog. **New from Task 7.1**: `Parameters<typeof authMiddleware>[0]` narrower-cast attempt failed under NextAuth's `(req, event)` 2-arg signature, so middleware retains a cast — but now narrower (`Response | Promise<Response | undefined>` typing only, not full `as unknown as`). Test scenario lacks AtCoder coverage and filter/delete steps that the plan-verbatim title (but not body) implied.
+- ⏭️ **Next**: dispatch a final whole-tree code reviewer subagent (read full diff `<initial-commit>..main`, check for whole-tree consistency / dead code / stale comments / cross-task design drift), then run `superpowers:finishing-a-development-branch` to decide merge/PR strategy. Branch is currently `main`; this project ran linearly on `main` per `subagent-driven-development` consent rules, so "finishing" is mostly choosing whether to tag a release, open a retrospective PR for record, or just declare done.
+- 🟡 **Open notes** (carry forward from earlier phases — none of these were introduced by Task 7.2): OAuth/`NEXTAUTH_SECRET` still `xxx` placeholders in `.env.local` (only blocks `npm run dev` in a real browser, not tests/CI); Neon DB password should be rotated since it was shared in chat during setup; `isUniqueViolation` duplicated in 2 route files (extract on next caller); `as any` casts on `lastContests`/`fetchStatus` in `dashboard/page.tsx` deferred backlog; `Parameters<typeof authMiddleware>[0]` narrower-cast attempt failed under NextAuth's `(req, event)` 2-arg signature so middleware retains a narrower-typed cast; e2e happy-path lacks AtCoder leg + filter/delete steps; **new (CI hardening backlog)**: failure-artifact upload + `concurrency:` group + action SHA-pinning + `${{ secrets.* }}` migration once non-E2E CI jobs land.
 
 ## This session's commits (2026-05-01) — Phase 6 close-out
 
@@ -45,6 +45,18 @@ Two more commits landed on `main` after `2a2f9b8`. HEAD is `82d201b`.
 | `d4ae9ec` | test(e2e): playwright happy-path with intercepted upstream | 7.1 |
 
 **Verification at HEAD `82d201b`:** `tsc EXIT=0`, `npm test → 36 passed`, `npm run e2e → 1 passed (15.1s)`. `git status` clean (only `.omc/` and `docs/` untracked).
+
+## This session's continuation commits (2026-05-01) — Task 7.2
+
+One commit landed on `main` after `64dd474`. HEAD is `2226e83`.
+
+| SHA | Message | Lane |
+|---|---|---|
+| `2226e83` | ci: typecheck + tests + e2e + drizzle check | 7.2 |
+
+**Verification at HEAD `2226e83`:** `tsc EXIT=0`, `npm test → 36 passed`, `git status` clean (only `.omc/` and `docs/` untracked). The CI workflow itself can't be exercised locally — first real verification is the next push to `main` or PR open against `main`. Pre-merge confidence comes from (a) plan-verbatim file, (b) spec compliance review confirming byte-for-byte match with plan, (c) code-quality review confirming all watch-outs (NODE_ENV guardrail dormancy, integration tests mocking `requireSession`, `package-lock.json` presence, `psql` runner availability, fail-fast default, secret hygiene) are satisfied.
+
+**No 7.2 fix-up commit.** First task in Phase 6 / Phase 7 to ship without one — both reviews approved on first pass with zero Critical or Important issues.
 
 ## What this project is
 
@@ -230,15 +242,15 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 13. **Task 6.5 outer-`catch` + `as any` cleanup (`79343cf` review fix-up)** — plan-verbatim had no `catch` on the outer try, so `await fetch` rejection (offline, DNS, abort) escaped to React's error boundary with the form left re-enabled and no UI feedback. Now mirrors 6.4's GroupForm `38a4131` pattern: outer `try { try {...POST...} catch { setError("network_error"); return; } if (groups...) try {...PATCH...} catch {...} } finally { setBusy(false); }`. Also dropped `as any` cast on platform select (replaced with `as "codeforces" | "atcoder"`) restoring the convention established in DashboardClient (`342f8a5`); added `Content-Type: application/json` header on both fetches per `38a4131` consistency.
 14. **Task 6.6 nameColor gate + three-state error UI (`0508522` review fix-up)** — plan-verbatim only handled `fetchStatus === "not_found"` and applied `rankColor` unconditionally to the `<h1>` displayName + `<strong>` current rating. When `getProfile()` falls back to a stale `existing` cache row from a prior `ok` fetch on a transient upstream error, the page would render confidently-styled colored text on a degraded view — same bug class as Task 6.1's `6e96db2` HandleCard fix-up. Now: (a) `nameColor = fetchStatus === "ok" ? rankColor ?? undefined : undefined` computed once, applied to both `<h1>` and `<strong>`; (b) three-state `error` UI mirroring the `9655d07` "stale > empty" rule — `error+stale-data` (`displayName !== null || currentRating !== null`) renders an amber banner above the header (`"Couldn't refresh from {platform} — showing last cached data from {fetchedAt}"`) with neutral colors and the rest of the page intact; `error+no-data` (both null) returns a standalone amber error block before the table; `ok`/`not_found` paths unchanged.
 
-### Phase 7 — E2E + CI 🔵 IN PROGRESS (1/2 tasks complete)
+### Phase 7 — E2E + CI ✅ COMPLETE (2/2 tasks complete)
 
 | Task | Commit | Status |
 |---|---|---|
 | 7.1 Playwright happy-path (cache-pre-seed deviation: server-side adapter not reachable from `context.route()` so seed `cached_profiles` for tourist/codeforces instead). New `playwright.config.ts`, `tests/e2e/_seed.ts`, `tests/e2e/happy-path.spec.ts`. Modifies `src/lib/api/session.ts` + `src/middleware.ts` for `E2E_TEST=1` bypass; switches `(app)/layout.tsx` from `auth()` to `requireSession()`. | `d4ae9ec` | ✅ |
 | 7.1 review fix-ups (extract `src/lib/api/e2e-bypass.ts` with prod-leak guardrail `throw if NODE_ENV==="production" && E2E_TEST==="1"`; cleanup-before-seed in `_seed.ts` so re-runs don't hit `groups_user_name_uniq`; async middleware wrapper drops `as unknown as` cast; tightened Playwright selectors `getByRole("link", { name: /tourist/i })` and `locator("li", { hasText: "legends" })`; bumped webServer timeout 120s→180s for cold-clone CI; synthetic email `e2e@x` → `e2e@example.test`) | `82d201b` | ✅ |
-| 7.2 GitHub Actions CI workflow | plan ~line 2700–2757 | ⏳ NEXT |
+| 7.2 GitHub Actions CI workflow (`.github/workflows/ci.yml` plan-verbatim — postgres:16 service container with `pshub` + `pshub_test`, `npm ci`, `psql -c "CREATE DATABASE pshub_test"`, dual `npm run db:migrate`, `npm run db:check`, `npm run typecheck`, `npm test`, `npx playwright install chromium --with-deps`, `npm run e2e`. Job-level `E2E_TEST=1` env. Triggers: `push: [main]` + all PRs.) | `2226e83` | ✅ |
 
-**Notable deviations / decisions in Phase 7 so far:**
+**Task 7.1 deviations / decisions:**
 1. **Cache-pre-seed instead of plan-verbatim `context.route()` upstream intercept (`d4ae9ec`).** Pre-authorized in plan-handoff doc. The plan-verbatim test mocked `https://codeforces.com/api/user.info*` via `context.route()`, but Playwright only intercepts BROWSER fetches; ps-hub's adapters live server-side per spec §4 ("server-only externals") and call `fetch()` from Node inside the route handler. So `_seed.ts` UPSERTs a `cached_profiles` row at `('codeforces', 'tourist')` with `fetchStatus: "ok"`, recent `fetchedAt`, and the same fixture data the plan-verbatim intercept would have returned (`displayName: "tourist"`, `currentRating: 3700`, `maxRating: 3979`, `rankLabel: "Legendary Grandmaster"`, `rankColor: "#FF0000"` per `src/lib/adapters/codeforces.ts:32`). `getProfile()` cache-hits inside the 10-min TTL so the adapter is never invoked. The two `context.route(...)` calls were removed from the spec entirely; replaced with a 2-line deviation comment.
 2. **`src/middleware.ts` E2E bypass added (`d4ae9ec`) — not in plan.** Plan only modifies `src/lib/api/session.ts`. But ps-hub has a NextAuth-wrapped middleware at `src/middleware.ts` matching `/api/((?!auth/).*)` that gates every API route with raw `auth()` checks INDEPENDENTLY of `requireSession()`. Without a middleware bypass, every `POST /api/groups`, `POST /api/favorites`, `PATCH /api/favorites/:id` returns 401 before the route handler's `requireSession()` even runs. Bypass is `if (process.env.E2E_TEST === "1") return NextResponse.next()` early-return.
 3. **`getByRole("textbox").first()` selector instead of plan's `page.locator("input").first()` (`d4ae9ec`).** Next.js renders a hidden `<input type="hidden" name="$ACTION_ID_...">` before any client-rendered input on pages with server actions in scope; plan's selector lands on the hidden input and `.fill("tourist")` doesn't reach the visible Handle textbox. `getByRole("textbox")` excludes `type="hidden"` by ARIA semantics so `.first()` deterministically picks the Handle input. **Selector tightened further in `82d201b`** to `getByRole("link", { name: /tourist/i })` for the dashboard assertion (HandleCard wraps displayName in `<Link>`) — defense against future stray "tourist" matches elsewhere on the page.
@@ -253,26 +265,25 @@ Files: `drizzle.config.ts`, `src/lib/db/{client,schema/auth,schema/domain,schema
 
 **Verification at HEAD `82d201b`:** `tsc EXIT=0`, `npm test → 36 passed`, `npm run e2e → 1 passed (15.1s)`. `git status` clean. Pushed to `origin/main`.
 
-**Task 7.2 entry plan (read before dispatching the 7.2 implementer):**
+**Task 7.2 outcome (`2226e83`):**
 
-Task 7.2 is a single ~50-line GitHub Actions workflow at `.github/workflows/ci.yml` (plan ~line 2700–2757). Notable items:
-- Uses **`postgres:16` service container** (no Neon dependency in CI). Two databases: `pshub` (main, default from container init) + `pshub_test` (created by a workflow step via `psql -c "CREATE DATABASE pshub_test"` against `DATABASE_URL`). Workflow then runs `npm run db:migrate` against both — second run via `DATABASE_URL=$TEST_DATABASE_URL npm run db:migrate`.
-- **Sets `E2E_TEST=1` at workflow level** (jobs.test.env) — applies to ALL test invocations, not just `npm run e2e`. Fine for ps-hub since unit/integration tests don't depend on real session (they mock `@/lib/api/session`). The new `e2e-bypass.ts` production guardrail (`82d201b`) doesn't fire here because `NODE_ENV` is unset in CI (Vitest sets it to `"test"` by default), but spec reviewer should still confirm `NODE_ENV !== "production"` throughout the workflow steps.
-- Runs `db:check` (drizzle-kit check — no schema drift), then `typecheck`, then `npm test`, then `npx playwright install chromium --with-deps`, then `npm run e2e`. **Fail-fast** (any step's non-zero exit aborts).
-- `package.json` already has `e2e` and `db:check` scripts (verified during 7.1) — no script lines to add.
-- `.github/workflows/ci.yml` is the only new file.
+Plan-verbatim ship — first task in Phase 6 / Phase 7 to close on a single commit with no fix-up. Spec compliance review confirmed byte-for-byte match to plan (line 2702–2757 of `docs/superpowers/plans/2026-04-29-ps-hub-mvp.md`); code-quality review approved with **0 Critical / 0 Important / 4 Minor** observations, all explicitly recommended for a separate future "CI hardening" PR rather than retroactive fold-in.
 
-**Watch-outs:**
-- `actions/setup-node@v4` with `cache: npm` — works only if `package-lock.json` is committed (it is at `82d201b`).
-- `services.postgres` with `--health-cmd "pg_isready -U postgres"` blocks downstream steps until ready. Plan-verbatim values are sane.
-- `npx playwright install chromium --with-deps` on `ubuntu-latest` actually installs the linux deps (unlike Windows where `--with-deps` is a no-op). Browser download adds ~30s to CI; consider caching `~/.cache/ms-playwright` if CI feedback loop matters.
-- Plan workflow doesn't set `NEXTAUTH_URL` per environment-or-secret distinction — it uses literal `http://localhost:3000` which is fine for the `webServer.command: "npm run dev"` Playwright spawns.
-- The plan-verbatim env block sets `GOOGLE_CLIENT_ID: test`, `GOOGLE_CLIENT_SECRET: test`, `NEXTAUTH_SECRET: test` — placeholders that satisfy the zod env loader without needing real OAuth creds in CI. (`requireSession` always returns `e2e-user` in CI thanks to `E2E_TEST=1`, so OAuth never fires.)
+Watch-outs verified clean during code-quality review:
+- **NODE_ENV guardrail dormant**: `src/lib/api/e2e-bypass.ts` only throws if `NODE_ENV === "production" && E2E_TEST === "1"`. CI never sets `NODE_ENV=production` — Vitest forces `test`, Playwright `webServer` forces `development`, typecheck/migrations don't load the module. Job-level `E2E_TEST=1` is therefore safe.
+- **All 4 integration test files mock `@/lib/api/session`** at module load, so `E2E_TEST=1` is a no-op for `npm test` invocations. The bypass is the intended behavior only at runtime via Playwright's `webServer`.
+- **`package-lock.json` present**, so `actions/setup-node@v4` with `cache: npm` cache key resolves.
+- **`psql` is preinstalled on `ubuntu-latest`** (postgresql-client) — the `Create test DB` step works without an explicit install.
+- **Fail-fast default**: no `continue-on-error: true` anywhere; any non-zero step exit aborts the job.
+- **Secret hygiene**: literal `test` placeholders for `GOOGLE_CLIENT_ID/SECRET/NEXTAUTH_SECRET` are safe because `E2E_TEST=1` short-circuits NextAuth before any signing occurs. Migrate to `${{ secrets.* }}` once a non-E2E job is added.
+- **Dual-DB migration ordering**: `Create test DB` precedes both `db:migrate` invocations; `db:check` runs after both migrations so drizzle-kit drift detection sees the latest schema in both DBs.
 
-**Pre-flight before dispatching 7.2 implementer:**
-- Decide whether to gate the workflow on `pull_request` only (plan says `on: { push: { branches: [main] }, pull_request: {} }` — both). Plan-verbatim is fine.
-- Confirm GitHub Actions is enabled on `github.com/hdh4952/ps-hub` (default for public repos).
-- Optional: add a `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }` block to avoid stacking runs on rapid pushes — flag as a spec deviation if the implementer adds it; it's not in plan-verbatim but is current best practice for low-friction CI.
+**Task 7.2 deferred items (CI hardening backlog — pick up alongside the next workflow PR):**
+- Add `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }` to avoid stacking CI runs on rapid pushes.
+- Add `actions/upload-artifact@v4` step on `if: failure()` after `npm run e2e` to surface Playwright trace/screenshot/video artifacts (under `test-results/` and `playwright-report/`) in the GitHub Actions UI. Real gap once the e2e suite grows past ~3 specs.
+- Action SHA-pinning (currently tag-pinned at `@v4`) — supply-chain hardening, not blocking until threat model expands to production deploys.
+- Cache `~/.cache/ms-playwright` to skip the ~30s browser download on every CI run.
+- Migrate `GOOGLE_CLIENT_ID/SECRET`, `NEXTAUTH_SECRET` from literal `env:` block to `${{ secrets.* }}` once any non-E2E CI job is added that exercises real NextAuth signing.
 
 **Task 7.1 backlog (pick up alongside the next e2e touch):**
 - **AtCoder leg missing**: happy-path only exercises Codeforces. Add an AtCoder favorite + dashboard assertion when cross-platform coverage matters.
@@ -313,7 +324,7 @@ Task 7.2 is a single ~50-line GitHub Actions workflow at `.github/workflows/ci.y
 2. **Verify state:**
    ```bash
    git status                  # should be clean (only `.omc/` and `docs/` untracked — both intentionally gitignored conceptually but not in .gitignore)
-   git log --oneline -10       # head at `82d201b` (Task 7.1 fix-up); previous is `d4ae9ec` (Task 7.1 ship). Cross-check against the Phase status table.
+   git log --oneline -10       # head at `2226e83` (Task 7.2 ship — `ci: typecheck + tests + e2e + drizzle check`). Previous is `64dd474` (Task 7.1 docs commit). Cross-check against the Phase status table.
    npx --no-install tsc --noEmit; echo "EXIT=$?"   # MUST be EXIT=0 — DO NOT pipe tsc through `tail` since that masks tsc's real exit code (see feedback_tsc_exit_code.md)
    npm test                    # 36 tests PASS (11 unit + 7 profile-cache integration + 6 profiles route + 5 groups route + 6 favorites route + 1 authz IDOR)
    npm run e2e                 # 1 test PASS (~15s). Make sure no stale `npm run dev` is running on :3000 first — `reuseExistingServer: true` would reuse it WITHOUT `E2E_TEST=1` and silently fail. On Windows: `powershell "Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue | %{ Stop-Process -Id \$_.OwningProcess -Force }"`.
@@ -325,15 +336,11 @@ Task 7.2 is a single ~50-line GitHub Actions workflow at `.github/workflows/ci.y
    # → test tables: 9 (8 schema + drizzle's _drizzle_migrations ledger)
    ```
 
-3. **Re-invoke the workflow skill:**
-   ```
-   /superpowers:subagent-driven-development
-   ```
-   then continue from **Task 7.2** in the plan (GitHub Actions CI workflow — `.github/workflows/ci.yml` with postgres:16 service container, dual-DB migrate, drizzle-kit check, typecheck, npm test, Playwright e2e). Plan section starts at line ~2700 of `docs/superpowers/plans/2026-04-29-ps-hub-mvp.md`; see also the **Task 7.2 entry plan** section above for service-container watch-outs and the `concurrency` deviation suggestion. After Phase 7 finishes: dispatch a final whole-tree code reviewer, then run `superpowers:finishing-a-development-branch`.
+3. **All 7 plan phases are now complete.** Two follow-on steps remain:
+   - **a. Final whole-tree code review.** Dispatch a `oh-my-claudecode:code-reviewer` (or `general-purpose`) subagent with a brief covering the entire diff `<initial-commit>..main`. Focus areas: cross-task consistency (e.g. error-handling baseline applied uniformly across UI tasks 6.1–6.6), dead code from earlier deviations (the `Partial<>`/throw shape that 3.1 used and 3.3 dropped — confirm it's gone), stale comments / TODOs, type-safety gaps deferred earlier (`as any` casts in `dashboard/page.tsx` + `handles/[platform]/[handle]/page.tsx`, `as unknown as` middleware cast), and a sanity pass on the security-sensitive surfaces (`src/lib/api/e2e-bypass.ts` prod guardrail, the `WHERE userId = session.userId` IDOR contract on every member route).
+   - **b. Run `superpowers:finishing-a-development-branch`.** This decides merge/PR strategy. Note: this project ran linearly on `main` per pre-authorized consent (`subagent-driven-development` workflow protocol), so "finishing" is mostly choosing whether to (i) tag a release, (ii) open a retrospective PR for record/CI-trigger purposes, or (iii) declare the branch shipped and move on. Open question to surface: did GitHub Actions run on `2226e83`'s push to main? Check `gh run list -L 5` if `gh` CLI is available, or browse `https://github.com/hdh4952/ps-hub/actions`.
 
-4. **Pattern to repeat for every remaining task:** see "Workflow protocol" above. Do not skip the spec review or push step.
-
-5. **When all 7 phases finish:** dispatch a final whole-tree code reviewer, then run the `superpowers:finishing-a-development-branch` skill.
+4. **Pattern reminder if reopening any task:** see "Workflow protocol" above. Do not skip the spec review or push step. Do not let an implementer self-approve.
 
 ## Key contracts to keep stable across sessions
 
