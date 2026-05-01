@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { groups } from "@/lib/db/schema/domain";
 import { withAuth } from "@/lib/api/with-auth";
 import { json400, json404, json409, json500 } from "@/lib/api/errors";
+import { isUniqueViolation } from "@/lib/db/errors";
 
 const ParamsSchema = z.object({ id: z.string().uuid() });
 
@@ -57,7 +58,3 @@ export const DELETE = withAuth<Ctx>(async (_req, ctx, { userId }) => {
     return json500();
   }
 });
-
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === "object" && err !== null && "code" in err && (err as { code: unknown }).code === "23505";
-}

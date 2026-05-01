@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { groups } from "@/lib/db/schema/domain";
 import { withAuth } from "@/lib/api/with-auth";
 import { json400, json409, json500 } from "@/lib/api/errors";
+import { isUniqueViolation } from "@/lib/db/errors";
 
 const PostBody = z.object({
   name: z.string().min(1).max(64),
@@ -33,7 +34,3 @@ export const POST = withAuth(async (req, _ctx, { userId }) => {
     return json500();
   }
 });
-
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === "object" && err !== null && "code" in err && (err as { code: unknown }).code === "23505";
-}
